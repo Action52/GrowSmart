@@ -50,6 +50,16 @@ def upload_to_s3(data):
     s3 = boto3.client('s3')
     bucket_name = 'growsmarttemporallanding'
     s3_key = 'website_data.json'
+     
+    # Delete all existing files with name website_data.json in the s3 bucket
+    files_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_key)
+    delete_keys = {'Objects': []}
+    if 'Contents' in files_to_delete:
+        for obj in files_to_delete['Contents']:
+            delete_keys['Objects'].append({'Key': obj['Key']})
+        s3.delete_objects(Bucket=bucket_name, Delete=delete_keys)
+
+    # Upload the new file
     s3.put_object(Body=json.dumps(data), Bucket=bucket_name, Key=s3_key)
 
 #Create task 'extract_data_task' to extract the data
