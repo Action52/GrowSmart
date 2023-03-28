@@ -14,7 +14,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 
 #set credentials to acces AWS s3 bucket
-#sustitute YOUR_AWS_ACCESS_KEY_ID and YOUR_AWS_SECRET_ACCESS_KEY with your own values
+#substitute YOUR_AWS_ACCESS_KEY_ID and YOUR_AWS_SECRET_ACCESS_KEY with your own values
 
 os.environ['AWS_ACCESS_KEY_ID'] = 'YOUR_AWS_ACCESS_KEY_ID'
 os.environ['AWS_SECRET_ACCESS_KEY'] = 'YOUR_AWS_SECRET_ACCESS_KEY'
@@ -26,8 +26,7 @@ default_args = {
     'start_date': datetime(2023, 3, 27),
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 1,
-    'schedule_interval': '@daily'
+    'retries': 1
 }
 
 #create the dag
