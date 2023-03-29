@@ -10,14 +10,14 @@ import boto3
 import requests
 import os
 
+from airflow.models import Variable
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
-#set credentials to acces AWS s3 bucket
-#substitute YOUR_AWS_ACCESS_KEY_ID and YOUR_AWS_SECRET_ACCESS_KEY with your own values
+#set credentials to acces AWS s3 bucket. Credentials are taken from airflow variables
 
-os.environ['AWS_ACCESS_KEY_ID'] = 'YOUR_AWS_ACCESS_KEY_ID'
-os.environ['AWS_SECRET_ACCESS_KEY'] = 'YOUR_AWS_SECRET_ACCESS_KEY'
+os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
+os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 
 #set the defauld args for the dag
 default_args = {
@@ -40,6 +40,7 @@ def extract_data():
     response = requests.get(url)
     if response.status_code == 200:
         data = response.json()
+        data['city'] = 'Barcelona'
         return data
     else:
         raise ValueError(f'Request failed.')
