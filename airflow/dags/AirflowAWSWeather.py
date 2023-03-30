@@ -4,7 +4,7 @@
 
 #Import the packeges
 
-from datetime import datetime, , timedelta
+from datetime import datetime, timedelta
 import json
 import boto3
 import requests
