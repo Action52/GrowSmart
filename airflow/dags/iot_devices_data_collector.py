@@ -1,106 +1,129 @@
-from airflow.models import DAG
-from airflow.operators.empty import EmptyOperator
-from airflow.operators.python import PythonOperator, ShortCircuitOperator
-from airflow.models import Variable
-import logging
-import datetime
+#import the required packages
+
+from datetime import datetime
 import boto3
+import os
+import io
+import pandas as pd
+import json
+import logging
+
+from airflow.operators.dummy import DummyOperator
+from airflow.models import Variable
+from airflow import DAG
+from airflow.operators.python import PythonOperator
 
 
-def verify_s3_bucket(ti):
-    session = boto3.Session(
-        region_name="eu-west-3",
-        aws_access_key_id=Variable.get("aws_access_key"),
-        aws_secret_access_key=Variable.get("aws_secret_access_key"),
-    )
-    s3 = session.resource("s3")
-    my_bucket = s3.Bucket("growsmartplanttraits")
-    size = len(list(my_bucket.objects.all()))
-    if size != 0:
-        ti.xcom_push(
-            key="plant_traits_csv_filename",
-            value=[obj.key for obj in my_bucket.objects.all()],
-        )
-        logging.info("New file found. Executing rest of DAG.")
-        return True
-    logging.info("No new files found. Aborting.")
-    return False
+#set the credentials to connetcs to the buckets
+os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
+os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 
-
-def move_document(ti):
-    session = boto3.Session(
-        region_name="eu-west-3",
-        aws_access_key_id=Variable.get("aws_access_key"),
-        aws_secret_access_key=Variable.get("aws_secret_access_key"),
-    )
-    s3 = session.resource("s3")
-    my_bucket = s3.Bucket("growsmarttemporallanding")
-    document_paths = ti.xcom_pull(key="plant_traits_csv_filename")
-    filenames = []
-    for i, document_path in enumerate(document_paths):
-        copy_source = {"Bucket": "growsmartplanttraits", "Key": document_path}
-        filename = f"{str(datetime.date.today())}/{i}_planttraits.csv"
-        logging.info(
-            f"Copying bucket {copy_source['Bucket']} file {copy_source['Key']} into"
-            f" s3://growsmarttemporallanding/{filename}"
-        )
-        s3.meta.client.copy(copy_source, "growsmarttemporallanding", filename)
-        filenames.append(filename)
-    ti.xcom_push(key="plant_traits_new_files_landing", value=filenames)
-
-
-def confirm_doc(ti):
-    filenames = ti.xcom_pull(key="plant_traits_new_files_landing")
-    session = boto3.Session(
-        region_name="eu-west-3",
-        aws_access_key_id=Variable.get("aws_access_key"),
-        aws_secret_access_key=Variable.get("aws_secret_access_key"),
-    )
-    s3 = session.resource("s3")
-    my_bucket = s3.Bucket("growsmarttemporallanding")
-    objs = list(my_bucket.objects.all())
-    keys = set(o.key for o in objs)
-    for filename in filenames:
-        if filename not in keys:
-            raise FileNotFoundError("File not found in federated landing zone.")
-    logging.info(f"All {filenames} in federated landing zone. Correct.")
-    return True
-
-
+#set default args
 default_args = {
-    "owner": "Luis Alfredo Leon",
-    "depends_on_past": False,
-    "start_date": datetime.datetime.now(),
-    "retries": 1,
-    "retry_delay": datetime.timedelta(minutes=1),
-    "catchup": False,
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2023, 3, 30),
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'schedule_interval': '@daily'
 }
 
-dag = DAG(
-    "plant_traits_data_collector",
-    max_active_runs=1,
-    default_args=default_args,
-    description=(
-        "This pipeline extracts the csv from the plant traints organization and places it on the "
-        "temporal landing zone."
-    ),
-)
+#create a dag
+dag = DAG('Iot_devices_data', default_args=default_args)
 
-begin_task = EmptyOperator(task_id="Begin", dag=dag)
+#create global variables for buckets
+s3 = boto3.client('s3')
+source_bucket = 'temporarydevicedata'
+destination_bucket = 'growsmarttemporallanding'
 
-verify_new_document_task = ShortCircuitOperator(
-    task_id="verify_new_doc_in_pipeline",
-    dag=dag,
-    python_callable=verify_s3_bucket,
-    do_xcom_push=True,
-)
+#create a function to check the document presence in temporarydevicedata bucket
+def check_documents_existence():
 
-move_new_document_task = PythonOperator(task_id="move_doc_to_landing_zone", dag=dag, python_callable=move_document)
+    # List all the files in the source S3 bucket
+    response = s3.list_objects(Bucket=source_bucket)
+    files = []
+    for content in response.get('Contents', []):
+        key = content.get('Key')
+        if not key.endswith('/'):  # Skip directories
+            files.append(f's3://temporarydevicedata/{key}')
+    
+    # If there are files in the bucket, trigger the extract_and_merge_data task
+    if files:
+        return 'extract_and_merge_data'
+    else:
+        return 'stop'
 
-confirm_docs_in_landing_task = ShortCircuitOperator(
-    task_id="confirm_plant_traits_doc_in_pipeline", dag=dag, python_callable=confirm_doc
-)
+#create the function for extract and merge data
+def extract_and_merge_data():
 
-end_task = EmptyOperator(task_id="End", dag=dag)
+    # List all the files in the source S3 bucket
+    response = s3.list_objects(Bucket=source_bucket)
+    files = []
+    for content in response.get('Contents', []):
+        key = content.get('Key')
+        if not key.endswith('/'):  # Skip directories
+            files.append(f's3://temporarydevicedata/{key}')
+    
+    logging.info(response)
 
-(begin_task >> verify_new_document_task >> move_new_document_task >> confirm_docs_in_landing_task >> end_task)
+    if not files:
+        logging.error('No files found in source bucket')
+        return
+    
+    logging.info(f'Number of files found in source bucket: {len(files)}')
+    
+    # Read all files into a Pandas dataframe
+    dfs = []
+    for file in files:
+        obj = s3.get_object(Bucket=source_bucket, Key=file.split('temporarydevicedata/')[1])
+        content = obj['Body'].read()
+        data = json.loads(content)
+        df = pd.DataFrame(data, index=[0])
+        dfs.append(df)
+    
+    logging.info(f'Number of dataframes merged: {len(dfs)}')
+    
+    # Concatenate all dataframes into one
+    merged_df = pd.concat(dfs)
+
+    # Write the merged dataframe to a CSV file in memory
+    output = io.StringIO()
+    merged_df.to_csv(output, index=False)
+    csv_bytes = output.getvalue().encode('utf-8')
+
+    # Get the current date
+    date = datetime.now().strftime('%Y-%m-%d')
+
+    # Upload the merged CSV file to the destination S3 bucket
+    s3.put_object(Bucket=destination_bucket, Key=f'iot_data_{date}/iot_data.csv', Body=csv_bytes)
+    
+    logging.info(f'Size of merged dataframe: {merged_df.shape}')
+    logging.info(f'Merged CSV file uploaded to {destination_bucket}')
+
+
+#create the function for deleting extracted files from the source bucket
+def deletion_of_extracted_data():
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket(source_bucket)
+    bucket.objects.all().delete()
+
+#Define the checking task
+check_documents_existence = PythonOperator(
+    task_id='check_documents_existence',
+    python_callable=check_documents_existence,
+    dag=dag)
+
+#Define the extract and merge task in the DAG
+extract_and_merge_data = PythonOperator(
+    task_id='extract_and_merge_data',
+    python_callable=extract_and_merge_data,
+    dag=dag)
+
+deletion_of_extracted_data = PythonOperator(
+    task_id='deletion_of_extracted_data',
+    python_callable=deletion_of_extracted_data,
+    dag=dag)
+
+#create the flow
+check_documents_existence >> extract_and_merge_data >> deletion_of_extracted_data
