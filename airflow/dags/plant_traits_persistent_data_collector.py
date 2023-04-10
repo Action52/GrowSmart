@@ -5,6 +5,7 @@ from airflow.models import Variable
 import logging
 import datetime
 import boto3
+import pandas as pd
 
 
 def verify_s3_bucket(ti):
@@ -14,17 +15,31 @@ def verify_s3_bucket(ti):
         aws_secret_access_key=Variable.get("aws_secret_access_key"),
     )
     s3 = session.resource("s3")
-    my_bucket = s3.Bucket("growsmartplanttraits")
-    size = len(list(my_bucket.objects.all()))
+    my_bucket = s3.Bucket("growsmarttemporallanding")
+    objects = list(my_bucket.objects.filter(Prefix='plant_traits/'))
+    size = len(objects)
     if size != 0:
         ti.xcom_push(
-            key="plant_traits_csv_filename",
-            value=[obj.key for obj in my_bucket.objects.all()],
+            key="temporal_plant_traits_csv_filename",
+            value=[obj.key for obj in objects],
         )
         logging.info("New file found. Executing rest of DAG.")
         return True
     logging.info("No new files found. Aborting.")
     return False
+
+
+def review_new_docs_schema(ti):
+    session = boto3.Session(
+        region_name="eu-west-3",
+        aws_access_key_id=Variable.get("aws_access_key"),
+        aws_secret_access_key=Variable.get("aws_secret_access_key"),
+    )
+    s3 = session.resource("s3")
+    filenames = ti.xcom_pull(key="temporal_plant_traits_csv_filename")
+    for filename in filenames:
+        doc =
+        logging.info(filename)
 
 
 def move_document(ti):
@@ -39,7 +54,7 @@ def move_document(ti):
     filenames = []
     for i, document_path in enumerate(document_paths):
         copy_source = {"Bucket": "growsmartplanttraits", "Key": document_path}
-        filename = f"plant_traits/{str(datetime.date.today())}/{i}_planttraits.csv"
+        filename = f"{str(datetime.date.today())}/{i}_planttraits.csv"
         logging.info(
             f"Copying bucket {copy_source['Bucket']} file {copy_source['Key']} into"
             f" s3://growsmarttemporallanding/{filename}"
@@ -77,7 +92,7 @@ default_args = {
 }
 
 dag = DAG(
-    "plant_traits_data_collector",
+    "plant_traits_persistent_data_collector",
     max_active_runs=1,
     default_args=default_args,
     description=(
@@ -95,6 +110,12 @@ verify_new_document_task = ShortCircuitOperator(
     do_xcom_push=True,
 )
 
+review_new_docs_schema_task = PythonOperator(
+    task_id="review_new_docs_schema",
+    dag=dag,
+    python_callable=review_new_docs_schema
+)
+
 move_new_document_task = PythonOperator(task_id="move_doc_to_landing_zone", dag=dag, python_callable=move_document)
 
 confirm_docs_in_landing_task = ShortCircuitOperator(
@@ -103,4 +124,4 @@ confirm_docs_in_landing_task = ShortCircuitOperator(
 
 end_task = EmptyOperator(task_id="End", dag=dag)
 
-(begin_task >> verify_new_document_task >> move_new_document_task >> confirm_docs_in_landing_task >> end_task)
+(begin_task >> verify_new_document_task >> review_new_docs_schema_task >> end_task)
