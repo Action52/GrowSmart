@@ -98,7 +98,7 @@ def combine_data():
 
 #create a function to upload the weather data inro AWS s3 bucket
 
-def upload_to_s3(data):
+def upload_to_s3():
     all_data = combine_data()
     s3 = boto3.client('s3')
     bucket_name = 'growsmarttemporallanding'
