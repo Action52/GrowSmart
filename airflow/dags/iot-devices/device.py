@@ -1,4 +1,5 @@
 import boto3
+import datetime
 import json
 import random
 import pandas as pd
@@ -69,11 +70,13 @@ class S3():
         return session.resource('s3')
 
 if __name__ == "__main__":   
-    # GCreate random data
+    # Create random data
     d = Device()
     data = d.create_data()
-    key = data['device_id']
     
+    
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    key = f"{data['device_id']}_{timestamp}"
     # Upload it to s3
     uploader = S3()
     s3_session = uploader.create_s3_session()

@@ -1,10 +1,19 @@
 import os
+import io
 import pandas as pd
 from airflow import DAG
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.models import Variable
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.bash_operator import BashOperator
 from datetime import datetime
+import boto3
+
+### Please install s3fs
+
+#set the credentials to connetcs to the buckets
+os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
+os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
+
 
 # Define default arguments for the DAG
 default_args = {
@@ -23,15 +32,12 @@ dag = DAG(
     max_active_runs=1,
 )
 
-# Initialize the S3Hook
-aws_access_key_id = os.environ.get('AWS_ACCESS_KEY_ID')
-aws_secret_access_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
-s3_hook = S3Hook(aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
-
 # Define a function to verify the CSV document exists in S3
 def verify_csv_exists(bucket_name, key_name):
-    csv_exists = s3_hook.check_for_key(key=key_name, bucket_name=bucket_name)
-    if not csv_exists:
+    s3 = boto3.client('s3')
+    try:
+        s3.head_object(Bucket=bucket_name, Key=key_name)
+    except:
         raise ValueError(f"CSV file {key_name} does not exist in S3 bucket {bucket_name}")
     else:
         return True
@@ -46,8 +52,20 @@ verify_csv_task = PythonOperator(
 
 # Define a function to convert the CSV file to Parquet format
 def convert_to_parquet(bucket_name, input_key, output_key):
-    df = pd.read_csv(f's3://{bucket_name}/{input_key}')
-    s3_hook.load_dataframe(df, output_key, bucket_name=bucket_name, partition_cols=None, use_threads=True)
+    # Read CSV file from S3
+    s3 = boto3.client('s3')
+    csv_obj = s3.get_object(Bucket=bucket_name, Key=input_key)
+    body = csv_obj['Body']
+    csv_string = body.read().decode('utf-8')
+    df = pd.read_csv(io.StringIO(csv_string))
+    
+    # Convert dataframe to Parquet format
+    parquet_buffer = io.BytesIO()
+    df.to_parquet(parquet_buffer, index=False)
+    parquet_buffer.seek(0)
+    
+    # Write Parquet file to S3
+    s3.put_object(Body=parquet_buffer, Bucket=bucket_name, Key=output_key)
     return True
 
 # Define a PythonOperator task to convert the CSV file to Parquet format
@@ -58,12 +76,25 @@ convert_to_parquet_task = PythonOperator(
     dag=dag,
 )
 
-# Define a BashOperator task to move the Parquet file to another S3 bucket
-move_parquet_task = BashOperator(
-    task_id='move_parquet',
-    bash_command=f'aws s3 mv s3://growsmarttemporallanding/iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.parquet s3://growsmartpersistentlanding/iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.parquet && aws s3 rm s3://growsmarttemporallanding/iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.csv',
+def move_and_delete_files():
+    # Move parquet file
+    source_bucket = 'growsmarttemporallanding'
+    dest_bucket = 'growsmartpersistentlanding'
+    parquet_key = f'iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.parquet'
+    
+    s3 = boto3.client('s3')
+    s3.copy_object(Bucket=dest_bucket, CopySource=f'{source_bucket}/{parquet_key}', Key=parquet_key)
+    s3.delete_object(Bucket=source_bucket, Key=parquet_key)
+
+    # Delete csv file
+    csv_key = f'iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.csv'
+    s3.delete_object(Bucket=source_bucket, Key=csv_key)
+    
+move_and_delete_task = PythonOperator(
+    task_id='move_and_delete_files',
+    python_callable=move_and_delete_files,
     dag=dag,
 )
 
 # Set task dependencies
-verify_csv_task >> convert_to_parquet_task >> move_parquet_task
+verify_csv_task >> convert_to_parquet_task >> move_and_delete_task
