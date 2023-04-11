@@ -6,6 +6,7 @@ import os
 import io
 import pandas as pd
 import json
+import logging
 
 from airflow.operators.dummy import DummyOperator
 from airflow.models import Variable
@@ -63,6 +64,15 @@ def extract_and_merge_data():
         key = content.get('Key')
         if not key.endswith('/'):  # Skip directories
             files.append(f's3://temporarydevicedata/{key}')
+    
+    logging.info(response)
+
+    if not files:
+        logging.error('No files found in source bucket')
+        return
+    
+    logging.info(f'Number of files found in source bucket: {len(files)}')
+    
     # Read all files into a Pandas dataframe
     dfs = []
     for file in files:
@@ -71,7 +81,9 @@ def extract_and_merge_data():
         data = json.loads(content)
         df = pd.DataFrame(data, index=[0])
         dfs.append(df)
-
+    
+    logging.info(f'Number of dataframes merged: {len(dfs)}')
+    
     # Concatenate all dataframes into one
     merged_df = pd.concat(dfs)
 
@@ -85,6 +97,10 @@ def extract_and_merge_data():
 
     # Upload the merged CSV file to the destination S3 bucket
     s3.put_object(Bucket=destination_bucket, Key=f'iot_data_{date}/iot_data.csv', Body=csv_bytes)
+    
+    logging.info(f'Size of merged dataframe: {merged_df.shape}')
+    logging.info(f'Merged CSV file uploaded to {destination_bucket}')
+
 
 #create the function for deleting extracted files from the source bucket
 def deletion_of_extracted_data():
@@ -111,7 +127,3 @@ deletion_of_extracted_data = PythonOperator(
 
 #create the flow
 check_documents_existence >> extract_and_merge_data >> deletion_of_extracted_data
-
-
-
-
