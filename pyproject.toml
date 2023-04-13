@@ -9,12 +9,14 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 boto3 = "^1.26.99"
-awscli = "^1.27.99"
 apache-airflow = {extras = ["amazon"], version = "^2.5.2"}
 black = "^23.1.0"
 autopep8 = "^2.0.2"
 pandas = "^1.5.3"
-pyspark = "^3.3.2"
+apache-airflow-providers-apache-spark = "^4.0.1"
+awscli = "^1.27.110"
+s3fs = "<=0.4"
+fastparquet = "^2023.2.0"
 
 [tool.black]
 line-length = 119
