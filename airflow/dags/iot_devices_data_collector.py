@@ -156,4 +156,4 @@ check_data_in_landing_zone_op = PythonOperator(
     dag=dag
 )
 
-check_documents_existence_op >> extract_and_merge_data_op >> deletion_of_extracted_data_op >> check_data_in_landing_zone_op
+check_documents_existence_op >> extract_and_merge_data_op  >> check_data_in_landing_zone_op >> deletion_of_extracted_data_op
