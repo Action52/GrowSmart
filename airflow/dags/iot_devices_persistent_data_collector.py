@@ -16,11 +16,13 @@ from datetime import datetime
 os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
 os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 
+# Get the current date
+today = datetime.now().date()
 
 # Define default arguments for the DAG
 default_args = {
     'owner': 'airflow',
-    'start_date': datetime(2023, 4, 11),
+    'start_date': today,
     'depends_on_past': False,
     'catchup': False,
 }
@@ -48,14 +50,6 @@ def verify_csv_exists(bucket_name, key_name):
     else:
         return True
 
-# Define a PythonOperator task to verify the CSV document exists in S3
-verify_csv_task = PythonOperator(
-    task_id='verify_csv_exists',
-    python_callable=verify_csv_exists,
-    op_kwargs={'bucket_name': source_bucket, 'key_name': f'iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.csv'},
-    dag=dag,
-)
-
 # Define a function to convert the CSV file to Parquet format
 def convert_and_move_to_parquet(ti, input_key):
     # Read CSV file from S3
@@ -71,27 +65,11 @@ def convert_and_move_to_parquet(ti, input_key):
     
     return True
 
-
-# Define a PythonOperator task to convert the CSV file to Parquet format
-convert_and_move_to_parquet_task = PythonOperator(
-    task_id='convert_to_parquet',
-    python_callable=convert_and_move_to_parquet,
-    provide_context=True,
-    op_kwargs={'bucket_name': source_bucket, 'input_key': f'iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.csv', 'output_key': f'iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.parquet'},
-    dag=dag,
-)
-
 def delete_files():
     csv_key = f'iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.csv'
     s3.delete_object(Bucket=source_bucket, Key=csv_key)
     
     return True
-    
-delete_task = PythonOperator(
-    task_id='delete_files',
-    python_callable=delete_files,
-    dag=dag,
-)
 
 def verify_parquet(ti):
     key_name = ti.xcom_pull(key='uploaded_parquet')
@@ -104,7 +82,30 @@ def verify_parquet(ti):
         raise ValueError(f"Parquet file {key_name} does not exist in S3 bucket {destination_bucket}")
     else:
         return True
+  
+# Define a PythonOperator task to convert the CSV file to Parquet format
+convert_and_move_to_parquet_task = PythonOperator(
+    task_id='convert_to_parquet',
+    python_callable=convert_and_move_to_parquet,
+    provide_context=True,
+    op_kwargs={'bucket_name': source_bucket, 'input_key': f'iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.csv', 'output_key': f'iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.parquet'},
+    dag=dag,
+)
     
+delete_task = PythonOperator(
+    task_id='delete_files',
+    python_callable=delete_files,
+    dag=dag,
+)
+
+# Define a PythonOperator task to verify the CSV document exists in S3
+verify_csv_task = PythonOperator(
+    task_id='verify_csv_exists',
+    python_callable=verify_csv_exists,
+    op_kwargs={'bucket_name': source_bucket, 'key_name': f'iot_data_{datetime.today().strftime("%Y-%m-%d")}/iot_data.csv'},
+    dag=dag,
+)
+
 verify_parquet_task = PythonOperator(
     task_id='verify_parquet_exists',
     python_callable=verify_parquet,

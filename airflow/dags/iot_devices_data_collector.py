@@ -17,18 +17,21 @@ from airflow.exceptions import AirflowException
 os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
 os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 
-#set default args
+# Get the current date
+today = datetime.now().date()
+
+# Set default args
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2023, 3, 30),
+    'start_date': today,
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
-    'schedule_interval': '@daily'
+    'schedule_interval': '0 0 * * *' # Run every day at midnight
 }
 
-#create a dag
+# Create a DAG
 dag = DAG('iot_devices_data', default_args=default_args)
 
 #create global variables for buckets
