@@ -17,12 +17,15 @@ os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
 os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 
 # Get the current date
-today = datetime.now().date()
+today = datetime.today().date()
+
+# Create a new datetime object with today's date and a start time of midnight
+start_date = datetime.combine(today, datetime.min.time())
 
 # Define default arguments for the DAG
 default_args = {
     'owner': 'airflow',
-    'start_date': today,
+    'start_date': start_date,
     'depends_on_past': False,
     'catchup': False,
 }
