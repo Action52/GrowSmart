@@ -39,7 +39,7 @@ def move_document(ti):
     filenames = []
     for i, document_path in enumerate(document_paths):
         copy_source = {"Bucket": "growsmartplanttraits", "Key": document_path}
-        filename = f"{str(datetime.date.today())}/{i}_planttraits.csv"
+        filename = f"plant_traits/{str(datetime.date.today())}/{i}_planttraits.csv"
         logging.info(
             f"Copying bucket {copy_source['Bucket']} file {copy_source['Key']} into"
             f" s3://growsmarttemporallanding/{filename}"
