@@ -1,4 +1,4 @@
-#The dag is created to extract the weather prediction (for the next 3 days) using
+#The dag is created to extract the weather prediction (for next day)
 #Free Weather API https://open-meteo.com/ with the schedule every day for 5 cities in Spain (Barcelona, Girona, Tarragona, Lleida and Madrid)
 
 
