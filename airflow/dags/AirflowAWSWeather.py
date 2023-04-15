@@ -1,5 +1,5 @@
 #The dag is created to extract the weather prediction (for the next 3 days) using
-#Free Weather API https://open-meteo.com/ with the schedule every 3 days for Barcelona
+#Free Weather API https://open-meteo.com/ with the schedule every day for 5 cities in Spain (Barcelona, Girona, Tarragona, Lleida and Madrid)
 
 
 #Import the packeges
@@ -21,6 +21,7 @@ from airflow.operators.python import PythonOperator
 os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
 os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 
+
 #set the defauld args for the dag
 default_args = {
     'owner': 'airflow',
@@ -34,6 +35,7 @@ default_args = {
 #create the dag
 
 dag = DAG('AirflowAWSWeather', default_args=default_args, schedule_interval = '0 1 * * *')
+
 
 #create functions to access the weather data using API
 
@@ -87,6 +89,7 @@ def extract_data_Lleida():
     else:
         raise ValueError(f'Request failed.')
 
+#Create function to combine the data
 def combine_data():
     # Call all the extract_data functions and store the results in a list
     city_data = [extract_data_Barcelona(), extract_data_Girona(), extract_data_Madrid(), extract_data_Tarragona(), extract_data_Lleida()]
@@ -95,16 +98,24 @@ def combine_data():
     all_data = {}
     for data in city_data:
         city_name = data['city']
+        # Add a new column 'prediction_date' to the data dictionary with a value of current date + 1 day
+        current_date = datetime.now().date()
+        pr_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+        prediction_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+        data['pr_date'] = pr_date
+        data['prediction_date'] = prediction_date
         all_data[city_name] = data
+
     return all_data
 
+#Create function to upload the data in s3
 def upload_to_s3():
     all_data = combine_data()
     s3 = boto3.client('s3')
     bucket_name = 'growsmarttemporallanding'
     s3_key = 'weather_data.csv'
 
-    # Delete all existing files with name website_data.json in the s3 bucket
+    # Delete all existing files with name website_data.csv in the s3 bucket
     files_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_key)
     delete_keys = {'Objects': []}
     if 'Contents' in files_to_delete:
@@ -118,16 +129,34 @@ def upload_to_s3():
     # Convert the dictionary to CSV data
     csv_data = io.StringIO()
     writer = csv.writer(csv_data)
-    writer.writerow(['city', 'temperature_2m_max', 'temperature_2m_min', 'rain_sum', 'showers_sum', 'snowfall_sum', 'precipitation_probability_max'])
+    writer.writerow(
+        ['pr_date', 'prediction_date', 'city', 'temperature_2m_max', 'temperature_2m_min', 'rain_sum', 'showers_sum',
+         'snowfall_sum', 'precipitation_probability_max'])
     for city_data in all_data.values():
         city_name = city_data['city']
-        row = [city_name]
-        row += [city_data['daily']['temperature_2m_max'][0], city_data['daily']['temperature_2m_min'][0], city_data['daily']['rain_sum'][0], city_data['daily']['showers_sum'][0], city_data['daily']['snowfall_sum'][0], city_data['daily']['precipitation_probability_max'][0]]
+        row = [city_data['pr_date'], city_data['prediction_date']]
+        row += [city_name, city_data['daily']['temperature_2m_max'][0], city_data['daily']['temperature_2m_min'][0],
+                city_data['daily']['rain_sum'][0], city_data['daily']['showers_sum'][0],
+                city_data['daily']['snowfall_sum'][0], city_data['daily']['precipitation_probability_max'][0]]
         writer.writerow(row)
 
     # Write the CSV data to the S3 bucket
     s3.put_object(Body=csv_data.getvalue().encode('utf-8'), Bucket=bucket_name, Key=s3_key)
-#Create task 'extract_data_task' to extract the data
+
+#Create function to check the correct loading of the weather_data.csv to the s3 temporal bucket
+def check_file():
+    s3 = boto3.client('s3')
+    bucket_name = 'growsmarttemporallanding'
+    s3_key = 'weather_data.csv'
+
+    # Scan all existing files with name website_data.csv in the s3 bucket
+    file_to_scan = s3.list_objects(Bucket=bucket_name, Prefix=s3_key)
+    if 'Contents' in file_to_scan:
+        return True
+    else:
+        return False
+
+#Create tasks 'extract_data_task' to extract the data
 
 t1_a = PythonOperator(
     task_id='extract_data_Barcelona',
@@ -159,7 +188,7 @@ t1_e = PythonOperator(
     dag=dag,
 )
 
-#Create task 'upload_to_s3_task' to upload the data
+#Create task 'combine_data' to upload the data
 t2 = PythonOperator(
     task_id='combine_data',
     python_callable=combine_data,
@@ -174,8 +203,15 @@ t3 = PythonOperator(
     dag=dag,
 )
 
+#Create task 'check_file' to upload the data
+t4 = PythonOperator(
+    task_id ='check_file',
+    python_callable = check_file,
+    op_kwargs = {'data': '{{ task_instance.xcom_pull(task_ids="upload_to_s3_task") }}'},
+    dag=dag,
+)
 
 #Create the the task flow
 
 
-[t1_a, t1_b, t1_c, t1_d, t1_e] >> t2 >> t3
+[t1_a, t1_b, t1_c, t1_d, t1_e] >> t2 >> t3 >> t4
