@@ -46,7 +46,7 @@ def review_new_docs_schema(ti):
                            "Plant height (m)", "Plant height (n.o.)"]
     ti.xcom_push(key="expected_cols", value=expected_columns)
     s3 = session.client("s3")
-    for filename in filenames:
+    for i, filename in enumerate(filenames):
         logging.debug(f"s3://growsmarttemporallanding/{filename}")
         df = pd.read_csv(
             f"s3://growsmarttemporallanding/{filename}",
@@ -66,12 +66,12 @@ def transform_and_move_datafile(ti):
     session = boto3.Session(
         region_name="eu-west-3",
         aws_access_key_id=Variable.get("aws_access_key"),
-        aws_secret_access_key=Variable.get("aws_secret_access_key"),
+        aws_secret_access_key=Variable.get("aws_secret_access_key")
     )
     s3 = session.client("s3")
     filenames = ti.xcom_pull(key="temporal_plant_traits_csv_filename")
     moved_files = []
-    for filename in filenames:
+    for i, filename in enumerate(filenames):
         df = pd.read_csv(
             f"s3://growsmarttemporallanding/{filename}",
             storage_options={
@@ -82,15 +82,17 @@ def transform_and_move_datafile(ti):
         expected_cols = ti.xcom_pull(key="expected_cols")
         df = df[expected_cols]
         fn = filename.strip(".csv")
+        today = str(datetime.date.today())
+
         df.to_parquet(
-            f"s3://growsmartpersistentlanding/{fn}.parquet",
+            f"s3://growsmartpersistentlanding/plant_traits/{today}",
             partition_cols=["Family"],
             storage_options={
                 "key": Variable.get("aws_access_key"),
                 "secret": Variable.get("aws_secret_access_key")
             }
         )
-        moved_files.append(f"{fn}.parquet")
+        moved_files.append(f"plant_traits/{today}")
     ti.xcom_push(key="plant_traits_new_files_persistent", value=moved_files)
 
 
