@@ -1,12 +1,19 @@
+# The dag is created to extract weather from s3 sourse bucket, transform and partition it into parquet format and place into s3 destination bucket
+
+
+#Import the packeges
+
 from datetime import datetime, timedelta
 import csv
 import boto3
 import requests
 import os
+import io
 from io import StringIO, BytesIO
 import pandas as pd
 import pyarrow.parquet as pq
 import pyarrow as pa
+import pyarrow.dataset as ds
 
 from airflow.models import Variable
 from airflow import DAG
@@ -50,33 +57,30 @@ def check_documents_existence():
 
 # Create the function for extract and transform data
 def extract_and_transform():
-    # Get input_data.csv from the source S3 bucket
-    response = s3.get_object(Bucket=source_bucket, Key='weather_data.csv')
-    content = response['Body'].read().decode('utf-8')
+        s3 = boto3.client('s3')
+        # Get weather_data.csv from the source S3 bucket
+        response = s3.get_object(Bucket=source_bucket, Key='weather_data.csv')
+        content = response['Body'].read().decode('utf-8')
 
-    # Parse the CSV content into a Pandas DataFrame
-    df = pd.read_csv(StringIO(content))
+        # Parse the CSV content into a Pandas DataFrame
+        df = pd.read_csv(StringIO(content))
 
-    # Convert non-numeric data types to strings
-    for column in df.columns:
-        if df[column].dtype != 'float64' and df[column].dtype != 'int64':
-            df[column] = df[column].astype(str)
+        # Convert the DataFrame to a PyArrow Table
+        table = pa.Table.from_pandas(df)
 
-    # Convert the DataFrame to a PyArrow Table
-    table = pa.Table.from_pandas(df)
+        partition_col = 'pr_date'
 
-    # Write the table to a Parquet file in memory
-    buf = BytesIO()
-    pq.write_table(table, buf)
+        current_date = datetime.today().strftime('%Y-%m-%d')
 
+        # Convert the Arrow Table to a partitioned Parquet file
+        pq.write_to_dataset(
+            table=table,
+            root_path=f"s3://{destination_bucket}/weather_data/{current_date}",
+            partition_cols=[partition_col],
+            compression='snappy'
+        )
 
-    # Upload the Parquet file to the destination S3 bucket
-    buf.seek(0)
-    key = 'weather_data.parquet'
-    s3.upload_fileobj(Fileobj=buf, Bucket=destination_bucket, Key=key)
-
-    return 'transform_complete'
-
+        return 'transform_complete'
 
 #Define the checking task
 t1 = PythonOperator(
@@ -85,13 +89,10 @@ t1 = PythonOperator(
     dag=dag)
 
 
-#Define the extract and merge task in the DAG
+#Define the extract and transform task in the DAG
 t2 = PythonOperator(
     task_id='extract_and_transform',
     python_callable=extract_and_transform,
     dag=dag)
 
 t1 >> t2
-
-
-
