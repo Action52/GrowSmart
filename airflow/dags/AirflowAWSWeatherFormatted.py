@@ -17,6 +17,7 @@ default_args = {
     'email_on_retry': False,
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
+    'catchup': False
 }
 dag = DAG('weather_data_formatted_zone', default_args=default_args, schedule_interval='0 3 * * *')
 
@@ -29,10 +30,13 @@ os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 s3 = boto3.client('s3')
 source_bucket = 'growsmartpersistentlanding'
 destination_bucket = 'growsmartformattedzone'
+
 # Get the current date and add 1 day
 today = datetime.now()
 today_str = today.strftime('%Y-%m-%d')
 tomorrow = datetime.now() + timedelta(days=1)
+tomorrow_str = tomorrow.strftime('%Y-%m-%d')
+
 # Get the date in the YYYY-MM-DD format
 date_str = tomorrow.strftime('%Y-%m-%d')
 
@@ -56,25 +60,48 @@ def clean_and_load_data():
     prefix = f'weather_data/{today_str}/'
     response = s3.list_objects(Bucket=source_bucket, Prefix=prefix)
     files = [content['Key'] for content in response.get('Contents', []) if content['Key'].endswith('.parquet')]
-
+    print(files)
+    
     # Create a SparkSession
     spark = SparkSession.builder.appName("parquet_rewrite").getOrCreate()
 
-    # Load each file as a Spark dataframe, clean it, and save it directly to the destination S3 bucket with tomorrow's date
+    # Load each file as a Spark dataframe, clean it, and store the cleaned data
+    cleaned_data = None
     for file in files:
         # Read Parquet as a Spark dataframe from S3 and clean the data
         df = spark.read.parquet(f's3a://{source_bucket}/{file}')
         cleaned_df = df.dropDuplicates()
+        
+        # Append the cleaned data to the merged dataframe
+        if cleaned_data is None:
+            cleaned_data = cleaned_df
+        else:
+            cleaned_data = cleaned_data.union(cleaned_df)
 
-        # Save the cleaned DataFrame as a Parquet file in the destination S3 bucket with tomorrow's date
-        file_name = file.split('/')[-1]
-        cleaned_df.write.mode("overwrite").parquet(f's3a://{destination_bucket}/weather_data/{date_str}/{file_name}')
+    # Repartition the cleaned data before saving as a CSV file
+    cleaned_data = cleaned_data.repartition(1)  # Set the desired number of partitions
+    
+    # Save the merged data as a CSV file in S3
+    csv_key = f'weather_data/{date_str}/merged_data.csv'
+    cleaned_data.write.mode("overwrite").csv(f's3a://{destination_bucket}/{csv_key}', header=True)
 
-    print(f"Successfully cleaned and stored {len(files)} files in S3")
+    print(f"Cleaned data saved as {csv_key} in {destination_bucket}")
 
     return 'stop'
 
+# Create a function to check the document presence in destination S3 bucket
+def check_weather_formatted_csv_existence():
 
+    prefix = f'weather_data/{tomorrow_str}/'
+    response = s3.list_objects(Bucket=destination_bucket, Prefix=prefix)
+    files = [content['Key'] for content in response.get('Contents', []) if content['Key'].endswith('.csv')]
+
+    # If the files exist in the bucket, trigger the extract_and_transform task
+    if files:
+        print(f"The following csv file exist in the destination S3 bucket: {files}")
+        return 'check_weather_formatted_csv_existence'
+    else:
+        return 'stop'
 
 #Define the checking task
 t1 = PythonOperator(
@@ -83,14 +110,18 @@ t1 = PythonOperator(
     dag=dag)
 
 
-#Define the saving task
+#Define the clean and load task
 t2 = PythonOperator(
     task_id='clean_and_load_data',
     python_callable=clean_and_load_data,
-    op_kwargs={'data': '{{ task_instance.xcom_pull(task_ids="heck_weather_parqet_existence") }}'},
+    op_kwargs={'data': '{{ task_instance.xcom_pull(task_ids="check_weather_parqet_existence") }}'},
     dag=dag)
 
-t1 >> t2
+#Define the csv check task
+t3 = PythonOperator(
+    task_id='check_weather_formatted_csv_existence',
+    python_callable=check_weather_formatted_csv_existence,
+    op_kwargs={'data': '{{ task_instance.xcom_pull(task_ids="clean_and_load_data") }}'},
+    dag=dag)
 
-
-
+t1 >> t2 >> t3
