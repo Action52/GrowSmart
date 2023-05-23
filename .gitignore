@@ -136,3 +136,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Kafka
+kafka_connect_config/
+Kafka_connect_data/
+kafka_log/
