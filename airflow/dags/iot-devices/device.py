@@ -5,6 +5,8 @@ import random
 import pandas as pd
 import os
 
+from confluent_kafka.admin import AdminClient, NewTopic
+from confluent_kafka import Producer
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -56,6 +58,24 @@ class Device():
             )
 
 
+class KafkaBroker():
+    ### Simulate in local machine
+    bootstrap_servers = 'localhost:29092'
+    
+    def __init__(self):
+        pass
+    
+    def _create_topic(self, topic_name):
+        admin_client = AdminClient({'bootstrap.servers': self.bootstrap_servers})
+        new_topic = NewTopic(topic_name, num_partitions=1, replication_factor=1)
+        admin_client.create_topics([new_topic])
+    
+    def send_message(self, topic_name, message_key, message):
+        self._create_topic(topic_name)
+        producer = Producer({'bootstrap.servers': self.bootstrap_servers})
+        producer.produce(topic_name, key=message_key, value=message)
+        producer.flush()
+        
 class S3(): 
     def __init__(self) -> None:
         pass
@@ -77,7 +97,12 @@ if __name__ == "__main__":
     
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     key = f"{data['device_id']}_{timestamp}"
-    # Upload it to s3
+    
+    # # # Upload it to s3
     uploader = S3()
     s3_session = uploader.create_s3_session()
     s3_session.Object('temporarydevicedata', key).put(Body=json.dumps(data))
+
+    # Stream to Kafka
+    broker = KafkaBroker()
+    broker.send_message(topic_name="iot_devices_data", message_key=key, message=json.dumps(data))
