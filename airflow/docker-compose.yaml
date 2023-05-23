@@ -168,6 +168,8 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    networks:
+      - grow_smart_network
 
   airflow-triggerer:
     <<: *airflow-common
@@ -299,3 +301,7 @@ services:
 
 volumes:
   postgres-db-volume:
+
+networks:
+  grow_smart_network:
+    external: true
