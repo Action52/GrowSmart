@@ -2,7 +2,6 @@
 from datetime import datetime, timedelta
 import boto3
 import os
-import aws_hadoop
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable

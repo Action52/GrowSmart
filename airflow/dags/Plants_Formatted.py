@@ -6,7 +6,7 @@ import s3fs
 import os
 import pandas as pd
 import pyarrow.parquet as pq
-import aws_hadoop
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
@@ -29,7 +29,7 @@ default_args = {
 }
 dag = DAG('plants_data_formatted_zone', default_args=default_args, schedule_interval=None)
 
-#set credentials to acces AWS s3 bucket. Credentials are taken from airflow variables
+# set credentials to acces AWS s3 bucket. Credentials are taken from airflow variables
 
 os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
 os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
@@ -80,6 +80,7 @@ def parquet_files():
         print('No parquet files found.')
 
     return parquet_files
+
 
 # Extract the plant data from a specific folders
 def data_extraction():
