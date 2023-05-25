@@ -14,6 +14,7 @@ services:
       - SPARK_USER=spark
     ports:
       - '8080:8080'
+      - '7077:7077'
 
   spark-worker:
     image: docker.io/bitnami/spark:3.3
