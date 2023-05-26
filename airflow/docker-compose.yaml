@@ -39,6 +39,8 @@ services:
       interval: 5s
       retries: 5
     restart: always
+    networks:
+      - local
 
   redis:
     image: redis:latest
@@ -50,6 +52,8 @@ services:
       timeout: 30s
       retries: 50
     restart: always
+    networks:
+      - local
 
   airflow-webserver:
     <<: *airflow-common
@@ -62,16 +66,23 @@ services:
       timeout: 10s
       retries: 5
     restart: always
+    networks:
+      - local
 
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
     restart: always
+    networks:
+      - local
 
   airflow-worker:
     <<: *airflow-common
     command: celery worker
     restart: always
+    networks:
+      - my_network
+      - local
 
   airflow-init:
     <<: *airflow-common
@@ -82,6 +93,8 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    networks:
+      - local
 
   flower:
     <<: *airflow-common
@@ -94,6 +107,12 @@ services:
       timeout: 10s
       retries: 5
     restart: always
+    networks:
+      - local
 
 volumes:
   postgres-db-volume:
+
+networks:
+  my_network:
+  local:
