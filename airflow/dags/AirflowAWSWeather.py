@@ -1,6 +1,6 @@
-#The dag is created to extract the weather prediction (for next day)
-#Free Weather API https://open-meteo.com/ with the schedule every day for 5 cities in Spain (Barcelona, Girona, Tarragona, Lleida and Madrid)
 
+# The dag is created to extract the weather prediction (for next day)
+# Free Weather API https://open-meteo.com/ with the schedule every day for 5 cities in Spain (Barcelona, Girona, Tarragona, Lleida and Madrid)
 
 #Import the packeges
 
@@ -21,12 +21,17 @@ from airflow.operators.python import PythonOperator
 os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
 os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 
+# Get the current date
+today = datetime.today().date()
+
+# Create a new datetime object with today's date and a start time of midnight
+start_date = datetime.combine(today, datetime.min.time())
 
 #set the defauld args for the dag
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2023, 3, 27),
+    'start_date': start_date,
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1

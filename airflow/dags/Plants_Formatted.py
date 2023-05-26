@@ -2,7 +2,6 @@
 from datetime import datetime, timedelta
 from io import BytesIO
 import boto3
-import s3fs
 import os
 import pandas as pd
 import pyarrow.parquet as pq
@@ -14,8 +13,6 @@ import re
 from functools import reduce
 from pyspark.sql import SparkSession
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col
-from pyspark.conf import SparkConf
 
 default_args = {
     'owner': 'airflow',
@@ -86,8 +83,6 @@ def data_extraction():
     latest_date = latest_folder()
 
     families = ['Apiaceae', 'Amaryllidaceae', 'Amaranthaceae', 'Brassicaceae', 'Compositae', 'Lamiaceae', 'Leguminosae', 'Rosaceae', 'Solanaceae']
-    output_path = "/Users/liliiaaliakberova/Downloads/output.csv"
-
     files = []
 
     # Iterate through the families
@@ -112,10 +107,6 @@ def data_extraction():
         print("Column names before renaming:")
         print(df.columns)
 
-        # Rename the column using alias
-        df = df.withColumnRenamed("AccSpecies ID", "AccSpecies_ID")
-        print(df.columns)
-
         # Rename the columns using acceptable format
         new_column_names = [re.sub(r'[ ,;{}()\n\t=`"]', '_', col) for col in df.columns]
         print(new_column_names)
@@ -126,83 +117,19 @@ def data_extraction():
         print(df.columns)
 
         dfs.append(df)
-        
 
-        # Count verification
-        total_rows_before_filter = df.count()
+    # Merge all DataFrames into a single DataFrame
+    merged_df = reduce(DataFrame.unionByName, dfs)
 
-        # Print the total rows before filter
-        print(f"Total rows before filter in {file}: {total_rows_before_filter}")
+    # Apply dropDuplicates() to the merged DataFrame
+    cleaned_df = merged_df.dropDuplicates()
 
-    # Combine DataFrames
-    
-    combined_df = reduce(DataFrame.unionByName, dfs)
-    print('TEST',  combined_df.columns)
-
-    
-    # Write combined DataFrame to CSV
-    combined_df.write.csv(output_path, header=True, mode="overwrite")
+    # Repartition, save, and return the result
+    cleaned_data = cleaned_df.repartition(1)
+    cleaned_data.write.mode("overwrite").csv(f's3a://{destination_bucket}/plant_traits', header=True)
 
     return 'stop'
-
-
-
-
-    """latest_date = latest_folder()
-
-    families = ['Apiaceae', 'Amaryllidaceae', 'Amaranthaceae', 'Brassicaceae', 'Compositae', 'Lamiaceae', 'Leguminosae', 'Rosaceae', 'Solanaceae']
-    species_data = {
-        'Amaranthaceae': 'Spinacia oleracea',
-        'Amaryllidaceae': ['Allium fistulosum', 'Allium sativum', 'Allium cepa'],
-        'Apiaceae': ['Daucus carota', 'Petroselinum crispum'],
-        'Brassicaceae': ['Eruca vesicaria', 'Brassica oleracea'],
-        'Compositae': ['Lactuca sativa', 'Cucumis sativus'],
-        'Lamiaceae': ['Basilicum polystachyon', 'Mentha piperita', 'Origanum vulgare'],
-        'Leguminosae': ['Pisum sativum', 'Phaseolus vulgaris'],
-        'Rosaceae': ['Fragaria ananassa'],
-        'Solanaceae': ['Solanum lycopersicum', 'Solanum melongena', 'Capsicum annuum', 'Capsicum chinense', 'Solanum tuberosum']
-    }
-
-    files = []
-
-    # Iterate through the families
-    for family in families:
-        prefix = f'plant_traits/{latest_date}/Family={family}/'
-        response = s3.list_objects(Bucket=source_bucket, Prefix=prefix)
-
-        family_files = [content['Key'] for content in response.get('Contents', []) if content['Key'].endswith('.parquet')]
-        files.extend(family_files)
-
-        print(f"The Parquet files in {prefix} are: {family_files}")
-
-    # Create a SparkSession
-    spark = SparkSession.builder.appName("parquet_merge").getOrCreate()
-
-    for file in files:
-        # Read Parquet as a Spark dataframe from S3
-        df = spark.read.parquet(f's3a://{source_bucket}/{file}')
-
-        # Rename the columns using acceptable format
-        new_column_names = [re.sub(r'[ ,;{}()\n\t=`"]', '_', column) for column in df.columns]
-        df = df.toDF(*new_column_names)
-
-        cleaned_df = df.dropDuplicates()
-
-        # Filter the dataframe based on species names and family
-        family = file.split('/')[-2].split('=')[1]  # Extract family from file path
-        species_names = species_data.get(family, [])
-        if isinstance(species_names, str):
-            species_names = [species_names]
-        cleaned_df = cleaned_df.filter(cleaned_df['Species_name_standardized_against_TPL'].isin(species_names))
-
-        # Count verification
-        total_rows_before_filter = cleaned_df.count()
-
-        # Print the total rows before filter
-        print(f"Total rows before filter in {file}: {total_rows_before_filter}")
-
-    return 'stop'"""
-
+        
 #Define the checking task
 t1 = PythonOperator(
     task_id='latest_folder',

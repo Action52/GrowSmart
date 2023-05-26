@@ -1,3 +1,11 @@
-s3fs<=0.4
+## docker build . --tag extend_airflow:latest
+
+
+s3fs==2021.4.0
+boto3==1.17.102
+apache-airflow-providers-apache-spark==2.0.0
+aws-hadoop
 pandas
-boto3
+pyspark==3.1.2
+
+

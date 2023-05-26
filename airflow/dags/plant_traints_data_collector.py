@@ -68,7 +68,6 @@ def confirm_doc(ti):
 
 
 default_args = {
-    "owner": "Luis Alfredo Leon",
     "depends_on_past": False,
     "start_date": datetime.datetime.now(),
     "retries": 1,

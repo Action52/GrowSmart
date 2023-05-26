@@ -3,16 +3,24 @@ from datetime import datetime, timedelta
 import boto3
 import os
 import aws_hadoop
+import pyspark
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 from pyspark.sql import SparkSession
 from pyspark.conf import SparkConf
 
+# Get the current date
+today = datetime.today().date()
+
+# Create a new datetime object with today's date and a start time of midnight
+start_date = datetime.combine(today, datetime.min.time())
+
+
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2023, 5, 2),
+    'start_date': start_date,
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
@@ -125,3 +133,6 @@ t3 = PythonOperator(
     dag=dag)
 
 t1 >> t2 >> t3
+
+
+
