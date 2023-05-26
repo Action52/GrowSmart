@@ -14,6 +14,7 @@ class Device():
     data = {}
     DEVICES_PATH = './data/devices.csv'
     CROPS_PATH = './data/crops.csv'
+    GARDEN_PATH = './data/garden_data.csv'
     
     def __init__(self) -> None:
         pass
@@ -21,7 +22,7 @@ class Device():
     def _get_data(self, path):
         return pd.read_csv(path)
     
-    def _build_data(self, devices, crops):
+    def _build_data(self, devices, crops, gardens):
         self.data = {
             "device_id": str(devices['device']),
             "light": bool(devices['light']),
@@ -37,8 +38,10 @@ class Device():
             "soil_humidity": float(crops['humidity']),
             "soil_nitrogen": float(crops['N']),
             "soil_potassium": float(crops['K']),
-            "soil_phosporous": float(crops['P'])
-            
+            "soil_phosporous": float(crops['P']),
+            "garden_id": str(gardens['garden_id']),
+            "garden_name": str(gardens['garden_name']),
+            "location": str(gardens['garden_location'])
         }
         return self.data
     
@@ -48,13 +51,16 @@ class Device():
         '''
         crops = self._get_data(self.CROPS_PATH)
         devices = self._get_data(self.DEVICES_PATH)
+        gardens = self._get_data(self.GARDEN_PATH)
         
         crops_size = len(crops)
         devices_size = len(devices)
+        gardens_size = len(gardens)
         
         return self._build_data(
             devices.loc[random.randrange(1, devices_size-1)], 
-                    crops.loc[random.randrange(1, crops_size-1)]
+                    crops.loc[random.randrange(1, crops_size-1)],
+                    gardens.loc[random.randrange(1, gardens_size-1)]
             )
 
 
@@ -104,5 +110,6 @@ if __name__ == "__main__":
     s3_session.Object('temporarydevicedata', key).put(Body=json.dumps(data))
 
     # Stream to Kafka
-    broker = KafkaBroker()
-    broker.send_message(topic_name="iot_devices_data", message_key=key, message=json.dumps(data))
+    if os.getenv('is_kafka_enabled') == "True":
+        broker = KafkaBroker()
+        broker.send_message(topic_name="iot_devices_data", message_key=key, message=json.dumps(data))
