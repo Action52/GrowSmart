@@ -2,17 +2,18 @@
 from datetime import datetime, timedelta
 from io import BytesIO
 import boto3
+import re
 import os
 import pandas as pd
 import pyarrow.parquet as pq
-import aws_hadoop
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
-import re
 from functools import reduce
 from pyspark.sql import SparkSession
 from pyspark.sql import DataFrame
+from pyspark.sql.functions import when
+
 
 default_args = {
     'owner': 'airflow',
@@ -34,7 +35,7 @@ os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 #create global variables for buckets
 s3 = boto3.client('s3')
 source_bucket = 'growsmartpersistentlanding'
-destination_bucket = 'growsmartformattedzone'
+destination_bucket = 'formattedtemporal'
 
 
 
@@ -81,15 +82,12 @@ def parquet_files():
 # Extract the plant data from a specific folders
 def data_extraction():
     latest_date = latest_folder()
+    folders = ['Apiaceae', 'Amaryllidaceae', 'Amaranthaceae', 'Brassicaceae', 'Compositae', 'Cucurbitaceae', 'Lamiaceae', 'Leguminosae', 'Rosaceae', 'Solanaceae']
 
-    families = ['Apiaceae', 'Amaryllidaceae', 'Amaranthaceae', 'Brassicaceae', 'Compositae', 'Lamiaceae', 'Leguminosae', 'Rosaceae', 'Solanaceae']
     files = []
-
-    # Iterate through the families
-    for family in families:
-        prefix = f'plant_traits/{latest_date}/Family={family}/'
+    for folder in folders:
+        prefix = f'plant_traits/{latest_date}/Family={folder}/'
         response = s3.list_objects(Bucket=source_bucket, Prefix=prefix)
-
         family_files = [content['Key'] for content in response.get('Contents', []) if content['Key'].endswith('.parquet')]
         files.extend(family_files)
 
@@ -103,33 +101,37 @@ def data_extraction():
         # Read Parquet as a Spark DataFrame from S3
         df = spark.read.parquet(f's3a://{source_bucket}/{file}')
 
-        # Print the column names before renaming
-        print("Column names before renaming:")
-        print(df.columns)
+        # Filter data based on specific values in Species_name_standardized_against_TPL column
+        species_names = ['Spinacia oleracea', 'Allium fistulosum', 'Allium sativum', 'Allium cepa',
+                         'Daucus carota', 'Petroselinum crispum', 'Eruca vesicaria', 'Brassica oleracea',
+                         'Lactuca sativa', 'Cucumis sativus', 'Basilicum polystachyon', 'Mentha piperita',
+                         'Origanum vulgare', 'Pisum sativum', 'Phaseolus vulgaris', 'Fragaria ananassa',
+                         'Solanum lycopersicum', 'Solanum melongena', 'Capsicum annuum', 'Capsicum chinense',
+                         'Solanum tuberosum']
 
-        # Rename the columns using acceptable format
-        new_column_names = [re.sub(r'[ ,;{}()\n\t=`"]', '_', col) for col in df.columns]
-        print(new_column_names)
-
-        # Rename the columns in the DataFrame
-        for idx, col in enumerate(df.columns):
-            df = df.withColumnRenamed(col, new_column_names[idx])
-        print(df.columns)
+        df = df.filter(df["Species_name_standardized_against_TPL"].isin(species_names))
 
         dfs.append(df)
 
     # Merge all DataFrames into a single DataFrame
     merged_df = reduce(DataFrame.unionByName, dfs)
 
-    # Apply dropDuplicates() to the merged DataFrame
-    cleaned_df = merged_df.dropDuplicates()
+    # Select only desired species from the merged DataFrame
+    selected_species = ['Spinacia oleracea', 'Allium fistulosum', 'Allium sativum', 'Allium cepa',
+                        'Daucus carota', 'Petroselinum crispum', 'Eruca vesicaria', 'Brassica oleracea',
+                        'Lactuca sativa', 'Cucumis sativus', 'Basilicum polystachyon', 'Mentha piperita',
+                        'Origanum vulgare', 'Pisum sativum', 'Phaseolus vulgaris', 'Fragaria ananassa',
+                        'Solanum lycopersicum', 'Solanum melongena', 'Capsicum annuum', 'Capsicum chinense',
+                        'Solanum tuberosum']
+
+    cleaned_df = merged_df.filter(merged_df["Species_name_standardized_against_TPL"].isin(selected_species))
 
     # Repartition, save, and return the result
     cleaned_data = cleaned_df.repartition(1)
     cleaned_data.write.mode("overwrite").csv(f's3a://{destination_bucket}/plant_traits', header=True)
 
     return 'stop'
-        
+
 #Define the checking task
 t1 = PythonOperator(
     task_id='latest_folder',

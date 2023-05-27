@@ -37,7 +37,7 @@ os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
 #create global variables for buckets
 s3 = boto3.client('s3')
 source_bucket = 'growsmartpersistentlanding'
-destination_bucket = 'growsmartformattedzone'
+destination_bucket = 'formattedtemporal'
 
 # Get the current date and add 1 day
 today = datetime.now()
@@ -90,7 +90,7 @@ def clean_and_load_data():
     cleaned_data = cleaned_data.repartition(1)  # Set the desired number of partitions
     
     # Save the merged data as a CSV file in S3
-    csv_key = f'weather_data/{date_str}/merged_data.csv'
+    csv_key = f'weather_data'
     cleaned_data.write.mode("overwrite").csv(f's3a://{destination_bucket}/{csv_key}', header=True)
 
     print(f"Cleaned data saved as {csv_key} in {destination_bucket}")
@@ -100,7 +100,7 @@ def clean_and_load_data():
 # Create a function to check the document presence in destination S3 bucket
 def check_weather_formatted_csv_existence():
 
-    prefix = f'weather_data/{tomorrow_str}/'
+    prefix = f'weather_data/'
     response = s3.list_objects(Bucket=destination_bucket, Prefix=prefix)
     files = [content['Key'] for content in response.get('Contents', []) if content['Key'].endswith('.csv')]
 
