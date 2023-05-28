@@ -12,7 +12,7 @@ from airflow.models import Variable
 from functools import reduce
 from pyspark.sql import SparkSession
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import when
+from pyspark.sql.functions import when, col
 
 
 default_args = {
@@ -126,6 +126,31 @@ def data_extraction():
 
     cleaned_df = merged_df.filter(merged_df["Species_name_standardized_against_TPL"].isin(selected_species))
 
+    # Add a new column 'plant_name' based on 'Species_name_standardized_against_TPL'
+    cleaned_df = cleaned_df.withColumn("plant_name", 
+                                       when(col("Species_name_standardized_against_TPL") == "Spinacia oleracea", "Spinach")
+                                       .when(col("Species_name_standardized_against_TPL") == "Allium fistulosum", "Green onion/Scallions")
+                                       .when(col("Species_name_standardized_against_TPL") == "Allium sativum", "Garlic")
+                                       .when(col("Species_name_standardized_against_TPL") == "Allium cepa", "Onion")
+                                       .when(col("Species_name_standardized_against_TPL") == "Daucus carota", "Carrot")
+                                       .when(col("Species_name_standardized_against_TPL") == "Petroselinum crispum", "Parsley")
+                                       .when(col("Species_name_standardized_against_TPL") == "Eruca vesicaria", "Arugula")
+                                       .when(col("Species_name_standardized_against_TPL") == "Brassica oleracea", "Kale")
+                                       .when(col("Species_name_standardized_against_TPL") == "Lactuca sativa", "Lettuce")
+                                       .when(col("Species_name_standardized_against_TPL") == "Cucumis sativus", "Cucumber")
+                                       .when(col("Species_name_standardized_against_TPL") == "Basilicum polystachyon", "Basil")
+                                       .when(col("Species_name_standardized_against_TPL") == "Mentha piperita", "Mint")
+                                       .when(col("Species_name_standardized_against_TPL") == "Origanum vulgare", "Oregano")
+                                       .when(col("Species_name_standardized_against_TPL") == "Pisum sativum", "Peas")
+                                       .when(col("Species_name_standardized_against_TPL") == "Phaseolus vulgaris", "Green bean")
+                                       .when(col("Species_name_standardized_against_TPL") == "Fragaria ananassa", "Strawberry")
+                                       .when(col("Species_name_standardized_against_TPL") == "Solanum lycopersicum", "Tomatoes")
+                                       .when(col("Species_name_standardized_against_TPL") == "Solanum melongena", "Eggplant")
+                                       .when(col("Species_name_standardized_against_TPL") == "Capsicum annuum", "Bell pepper")
+                                       .when(col("Species_name_standardized_against_TPL") == "Capsicum chinense", "Chilli pepper")
+                                       .when(col("Species_name_standardized_against_TPL") == "Solanum tuberosum", "Potatoes")
+                                       .otherwise("Unknown"))
+    
     # Repartition, save, and return the result
     cleaned_data = cleaned_df.repartition(1)
     cleaned_data.write.mode("overwrite").csv(f's3a://{destination_bucket}/plant_traits', header=True)
