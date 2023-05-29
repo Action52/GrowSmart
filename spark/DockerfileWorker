@@ -1,0 +1,28 @@
+# Use the official Spark image from the Docker Hub as the base image
+FROM bitnami/spark:3.3
+
+# Copy the start-worker.sh script into the Docker image
+COPY start_worker.sh ./start_worker.sh
+# COPY ./jars/*.jar /opt/bitnami/spark/jars/
+
+#USER root
+# Update and install curl
+#RUN apt-get update
+#RUN apt-get install -y curl
+
+#USER 1001
+
+#RUN curl 'https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.704/aws-java-sdk-bundle-1.11.704.jar' --output /opt/bitnami/spark/jars/aws-java-sdk-bundle-1.11.704.jar
+
+# Download the AWS Java SDK
+#RUN curl -o /opt/bitnami/spark/jars/aws-java-sdk-bundle-1.11.874.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.874/aws-java-sdk-bundle-1.11.874.jar
+
+# Download the Hadoop AWS connector
+#RUN curl -o /opt/bitnami/spark/jars/hadoop-aws-3.2.0.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.2.0/hadoop-aws-3.2.0.jar
+
+
+#RUN chmod +x ./wait-for-it.sh ./start_worker.sh
+
+# Set the start-worker.sh script as the entrypoint
+ENTRYPOINT ["/bin/bash", "./start_worker.sh"]
+

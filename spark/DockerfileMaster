@@ -1,0 +1,19 @@
+# Use the Bitnami Spark image as the base
+FROM bitnami/spark:3.3
+
+# Update and install curl
+USER root
+#RUN apt-get update
+#RUN apt-get install -y curl
+
+# COPY ./jars/*.jar /opt/bitnami/spark/jars/
+
+#USER 1001
+
+#RUN curl 'https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.704/aws-java-sdk-bundle-1.11.704.jar' --output /opt/bitnami/spark/jars/aws-java-sdk-bundle-1.11.704.jar
+
+# Download the AWS Java SDK
+#RUN curl -o /opt/bitnami/spark/jars/aws-java-sdk-bundle-1.11.874.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.874/aws-java-sdk-bundle-1.11.874.jar
+
+# Download the Hadoop AWS connector
+#RUN curl -o /opt/bitnami/spark/jars/hadoop-aws-3.2.0.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.2.0/hadoop-aws-3.2.0.jar
