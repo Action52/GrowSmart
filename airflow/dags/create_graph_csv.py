@@ -29,7 +29,8 @@ t1 = SparkSubmitOperator(
     application='spark-scripts/process_s3_formatted.py',
     conn_id='spark-container-connector',
     application_args=['s3a://growsmartformattedzone/', 'pocFormatted.csv', aws_access_key_id, aws_secret_access_key],
-    dag=dag
+    dag=dag,
+    verbose=True
 )
 
 t1
