@@ -143,3 +143,6 @@ kafka_connect_data/
 kafka_log/
 kafka_data/
 zookeeper_data/
+
+# Cache
+cache

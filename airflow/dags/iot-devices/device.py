@@ -4,6 +4,8 @@ import json
 import random
 import pandas as pd
 import os
+import uuid
+import time
 
 from confluent_kafka.admin import AdminClient, NewTopic
 from confluent_kafka import Producer
@@ -14,7 +16,25 @@ class Device():
     data = {}
     DEVICES_PATH = './data/devices.csv'
     CROPS_PATH = './data/crops.csv'
-    GARDEN_PATH = './data/garden_data.csv'
+    SPECIES_PATH = './data/species.csv'
+    PLANT_CACHE_PATH = './cache/plants.json'
+    
+    CONSTRAINT = {
+        "Big Size Garden": 9,
+        "Middle Size Garden": 4,
+        "Small Garden With Lamp": 4,
+    }
+    
+    MAPPING = [
+        {'device_id': 'b8:27:eb:bf:9d:51', 'location': 'Taragona', 'garden_id': 'BC4FDD', 'garden_name': 'Middle Size Garden'},
+        {'device_id': 'p0:33:18:00:20:11', 'location': 'Lleida', 'garden_id': '16FFB3', 'garden_name': 'Middle Size Garden'},
+        {'device_id': 'az:12:rb:ss:34:gh', 'location': 'Girona', 'garden_id': 'B5A7D2', 'garden_name': 'Small Garden With Lamp'},
+        {'device_id': '18:24:as:kf:24:00', 'location': 'Barcelona', 'garden_id': '4D2E71', 'garden_name': 'Big Size Garden'},
+        {'device_id': 'kd:sd:3a:33:69:42', 'location': 'Girona', 'garden_id': '91DE92', 'garden_name': 'Big Size Garden'},
+        {'device_id': 'o0:4e:ve:rt:1l:l1', 'location': 'Madrid', 'garden_id': '75DF16', 'garden_name': 'Big Size Garden'},
+    ]
+
+    MAPPING_SIZE = len(MAPPING)
     
     def __init__(self) -> None:
         pass
@@ -22,9 +42,27 @@ class Device():
     def _get_data(self, path):
         return pd.read_csv(path)
     
-    def _build_data(self, devices, crops, gardens):
+    def _build_data(self, devices, crops, species):
+        rand_data  = self.MAPPING[random.randrange(0, self.MAPPING_SIZE)]
+        plant_cache = self._read_plant_cache()
+        
+        # If cache is not full generate new data else get data from cache
+        if len(plant_cache[rand_data['device_id']]) < self.CONSTRAINT[rand_data['garden_name']]:
+            plant_id = str(uuid.uuid4())
+            species_id = str(int(species['Species_id']))
+            plant_cache[rand_data['device_id']].append(f'{plant_id}:{species_id}')
+            
+            # Write to cache
+            self._write_plant_cache(plant_cache)
+
+        else:
+            # assign random plant from cache
+            plant = plant_cache[rand_data['device_id']][random.randrange(0, len(plant_cache[rand_data['device_id']]))]
+            plant_id, species_id = plant.split(":")
+
+                    
         self.data = {
-            "device_id": str(devices['device']),
+            "device_id": rand_data['device_id'],
             "light": bool(devices['light']),
             "motion": bool(devices['motion']),
             "co": float(devices['co']),
@@ -39,9 +77,11 @@ class Device():
             "soil_nitrogen": float(crops['N']),
             "soil_potassium": float(crops['K']),
             "soil_phosporous": float(crops['P']),
-            "garden_id": str(gardens['garden_id']),
-            "garden_name": str(gardens['garden_name']),
-            "location": str(gardens['garden_location'])
+            "garden_id": rand_data['garden_id'],
+            "garden_name": rand_data['garden_name'],
+            "location": rand_data['location'],
+            'species_id': species_id,
+            'plant_id': plant_id
         }
         return self.data
     
@@ -51,19 +91,28 @@ class Device():
         '''
         crops = self._get_data(self.CROPS_PATH)
         devices = self._get_data(self.DEVICES_PATH)
-        gardens = self._get_data(self.GARDEN_PATH)
+        species = self._get_data(self.SPECIES_PATH)
         
         crops_size = len(crops)
         devices_size = len(devices)
-        gardens_size = len(gardens)
+        species_size = len(species)
         
         return self._build_data(
-            devices.loc[random.randrange(1, devices_size-1)], 
-                    crops.loc[random.randrange(1, crops_size-1)],
-                    gardens.loc[random.randrange(1, gardens_size-1)]
+            devices.loc[random.randrange(0, devices_size)], 
+                    crops.loc[random.randrange(0, crops_size)],
+                    species.loc[random.randrange(0, species_size)]
             )
-
-
+    
+    def _read_plant_cache(self):
+        with open(self.PLANT_CACHE_PATH, "r") as file:
+            data = json.load(file)
+        
+        return data
+    
+    def _write_plant_cache(self, plant_cache):
+        with open(self.PLANT_CACHE_PATH, "w") as file:
+            file.write(json.dumps(plant_cache))
+        
 class KafkaBroker():
     ### Simulate in local machine
     bootstrap_servers = 'localhost:29092'
@@ -96,20 +145,28 @@ class S3():
         return session.resource('s3')
 
 if __name__ == "__main__":   
-    # Create random data
-    d = Device()
-    data = d.create_data()
+    MAX_STREAM = 100
     
-    
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    key = f"{data['device_id']}_{timestamp}"
-    
-    # # # Upload it to s3
-    uploader = S3()
-    s3_session = uploader.create_s3_session()
-    s3_session.Object('temporarydevicedata', key).put(Body=json.dumps(data))
+    stream_count = 1
+    while True and stream_count <= MAX_STREAM:
+        # Create random data
+        d = Device()
+        data = d.create_data()
+        
+        
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        key = f"{data['device_id']}_{timestamp}"
+        
+        # Upload it to s3
+        uploader = S3()
+        s3_session = uploader.create_s3_session()
+        s3_session.Object('temporarydevicedata', key).put(Body=json.dumps(data))
 
-    # Stream to Kafka
-    if os.getenv('is_kafka_enabled') == "True":
-        broker = KafkaBroker()
-        broker.send_message(topic_name="iot_devices_data", message_key=key, message=json.dumps(data))
+        # Stream to Kafka
+        if os.getenv('is_kafka_enabled') == "True":
+            print("Send to Kafka")
+            broker = KafkaBroker()
+            broker.send_message(topic_name="iot_devices_data", message_key=key, message=json.dumps(data))
+        
+        stream_count += 1
+        time.sleep(1)
