@@ -8,9 +8,9 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.dummy_operator import DummyOperator
 from pyspark.sql import functions as F
 from airflow.models import Variable
-from pyspark.sql.functions import lit, col
+from pyspark.sql.functions import col
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType
+
 from pyspark.sql.window import Window
 from pyspark.sql.functions import row_number
 
@@ -75,27 +75,33 @@ def join():
     weather_df = spark.read.csv(f's3a://{source_bucket}/{weather_file}', header=True)
     plants_df = spark.read.csv(f's3a://{source_bucket}/{plants_file}', header=True)
 
+    # Specify column names for the duplicate columns
+    iot_df_with_alias = iot_df.select([col(c).alias(f"iot_{c}") for c in iot_df.columns])
+    weather_df_with_alias = weather_df.select([col(c).alias(f"weather_{c}") for c in weather_df.columns])
+    plants_df_with_alias = plants_df.select([col(c).alias(f"plants_{c}") for c in plants_df.columns])
+
     # Perform the join between iot_df and weather_df
-    joined_df = iot_df.join(weather_df, iot_df["location"] == weather_df["city"], "inner")
+    joined_df = iot_df_with_alias.join(weather_df_with_alias, iot_df_with_alias["iot_location"] == weather_df_with_alias["weather_city"], "inner")
 
-    # Cross join with plants_df to add random rows from plants_df to each row in joined_df
-    cross_joined_df = joined_df.crossJoin(plants_df)
+    # Convert columns to integer type
+    joined_df = joined_df.withColumn("iot_species_id", joined_df["iot_species_id"].cast("integer"))
+    print(joined_df.show(1))
+    print(joined_df.printSchema())
+    plants_df_with_alias = plants_df_with_alias.withColumn("plants_Species_id", plants_df_with_alias["plants_Species_id"].cast("integer"))
+    print(plants_df_with_alias.show(1))
+    print(plants_df_with_alias.printSchema())
 
-    # Add row number within each group of unique sensor_id and garden_name combinations
-    window = Window.partitionBy(col("sensor_id"), col("garden_name")).orderBy(rand())
-    cross_joined_df = cross_joined_df.withColumn("row_number", row_number().over(window))
+    print(joined_df.select('iot_species_id').show(1))
+    print(plants_df_with_alias.select('plants_Species_id').show(1))
 
-    # Filter the rows based on the specified criteria
-    cross_joined_df = cross_joined_df.filter(
-        (col("row_number").between(1, 5) & (col("garden_name") == "Big Size Garden")) |
-        (col("row_number").between(1, 2) & (col("garden_name") == "Small Garden With Lamp")) |
-        (col("row_number").between(1, 3) & (col("garden_name") == "Middle Size Garden"))
-    )
+    # Perform the join between joined_df and plants_df
+    final_df = joined_df.join(plants_df_with_alias, joined_df["iot_species_id"] == plants_df_with_alias["plants_Species_id"], "inner")
+    final_df = final_df.repartition(1)
+    print(final_df.show(1))
 
-    cross_joined_df = cross_joined_df.repartition(1)
 
     # Save the merged data as a CSV file in S3
-    cross_joined_df.write.mode("overwrite").csv(f's3a://{destination_bucket}/{today}/', header=True)
+    final_df.write.mode("overwrite").csv(f's3a://{destination_bucket}/{today}/', header=True)
 
     print(f"Cleaned data saved in {destination_bucket}/joined_data/")
 
