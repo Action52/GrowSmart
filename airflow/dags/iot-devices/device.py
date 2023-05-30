@@ -13,18 +13,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Device():
+    '''
+        Simulate IoT Device data streaming, it will generate IoT devices data from different data sources.
+    '''
+    
     data = {}
     DEVICES_PATH = './data/devices.csv'
     CROPS_PATH = './data/crops.csv'
     SPECIES_PATH = './data/species.csv'
     PLANT_CACHE_PATH = './cache/plants.json'
     
+    # Constraint for generating the data, which correspond to maximum plant inside a garden,
+    # we will use this constraint to getting the data from the cache
     CONSTRAINT = {
         "Big Size Garden": 9,
         "Middle Size Garden": 4,
         "Small Garden With Lamp": 4,
     }
     
+    # Hard coded mapping between device and its location & garden, 
+    # it is needed to make sure that corresponding device id always related to same garden and location
     MAPPING = [
         {'device_id': 'b8:27:eb:bf:9d:51', 'location': 'Taragona', 'garden_id': 'BC4FDD', 'garden_name': 'Middle Size Garden'},
         {'device_id': 'p0:33:18:00:20:11', 'location': 'Lleida', 'garden_id': '16FFB3', 'garden_name': 'Middle Size Garden'},
@@ -33,7 +41,6 @@ class Device():
         {'device_id': 'kd:sd:3a:33:69:42', 'location': 'Girona', 'garden_id': '91DE92', 'garden_name': 'Big Size Garden'},
         {'device_id': 'o0:4e:ve:rt:1l:l1', 'location': 'Madrid', 'garden_id': '75DF16', 'garden_name': 'Big Size Garden'},
     ]
-
     MAPPING_SIZE = len(MAPPING)
     
     def __init__(self) -> None:
@@ -56,10 +63,9 @@ class Device():
             self._write_plant_cache(plant_cache)
 
         else:
-            # assign random plant from cache
+            # Assign random plant from cache
             plant = plant_cache[rand_data['device_id']][random.randrange(0, len(plant_cache[rand_data['device_id']]))]
             plant_id, species_id = plant.split(":")
-
                     
         self.data = {
             "device_id": rand_data['device_id'],
@@ -83,6 +89,7 @@ class Device():
             'species_id': species_id,
             'plant_id': plant_id
         }
+        
         return self.data
     
     def create_data(self):
@@ -114,8 +121,10 @@ class Device():
             file.write(json.dumps(plant_cache))
         
 class KafkaBroker():
-    ### Simulate in local machine
-    bootstrap_servers = 'localhost:29092'
+    '''
+        Kafka broker for streaming data, it will produce the data into kafka topics.
+    '''
+    bootstrap_servers = os.getenv('kafka_server')
     
     def __init__(self):
         pass
@@ -132,12 +141,15 @@ class KafkaBroker():
         producer.flush()
         
 class S3(): 
+    '''
+        S3 uploader for historical data.
+    '''
     def __init__(self) -> None:
         pass
     
     def create_s3_session(self):
         session = boto3.Session(
-            region_name="eu-west-3",
+            region_name=os.getenv('aws_region'),
             aws_access_key_id=os.getenv('aws_access_key'),
             aws_secret_access_key=os.getenv('aws_secret_access_key')
         )
@@ -145,14 +157,13 @@ class S3():
         return session.resource('s3')
 
 if __name__ == "__main__":   
-    MAX_STREAM = 100
+    MAX_STREAM = int(os.getenv('max_stream'))
     
     stream_count = 1
     while True and stream_count <= MAX_STREAM:
         # Create random data
         d = Device()
         data = d.create_data()
-        
         
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         key = f"{data['device_id']}_{timestamp}"

@@ -4,6 +4,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, BooleanType, DoubleType
 
 class Spark():
+    '''
+        Spark session client.
+    '''
     def _init_session(self):
         spark = SparkSession \
             .builder \
@@ -14,6 +17,9 @@ class Spark():
         return spark
 
 class SparkStreaming(Spark):
+    '''
+        Spark streaming client.
+    '''
     KAFKA_TOPIC_NAME_CONS = "iot_devices_data"
     KAFKA_BOOTSTRAP_SERVERS_CONS = 'localhost:29092'
 
@@ -28,6 +34,9 @@ class SparkStreaming(Spark):
         return df
 
 class StreamAnalytics():
+    '''
+        Class for doing stream analytics from the stream.
+    '''
     SCHEMA = StructType([
         StructField("device_id", StringType(), False),
         StructField("light", BooleanType(), False),
