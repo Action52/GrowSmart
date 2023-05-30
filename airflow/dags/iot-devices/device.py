@@ -6,11 +6,18 @@ import pandas as pd
 import os
 import uuid
 import time
+import argparse
 
 from confluent_kafka.admin import AdminClient, NewTopic
 from confluent_kafka import Producer
 from dotenv import load_dotenv
 load_dotenv()
+
+# Get the current directory
+current_dir = os.getcwd()
+# Define the absolute path to the script
+
+
 
 class Device():
     '''
@@ -18,7 +25,7 @@ class Device():
     '''
     
     data = {}
-    DEVICES_PATH = './data/devices.csv'
+    DEVICES_PATH =  '/data/devices.csv'
     CROPS_PATH = './data/crops.csv'
     SPECIES_PATH = './data/species.csv'
     PLANT_CACHE_PATH = './cache/plants.json'
@@ -43,8 +50,13 @@ class Device():
     ]
     MAPPING_SIZE = len(MAPPING)
     
-    def __init__(self) -> None:
-        pass
+    def __init__(self, is_airflow) -> None:
+        self.is_airflow = is_airflow
+        if is_airflow:
+            self.DEVICES_PATH =  '/scripts/data/devices.csv'
+            self.CROPS_PATH = '/scripts/data/crops.csv'
+            self.SPECIES_PATH = '/scripts/data/species.csv'
+            self.PLANT_CACHE_PATH = '/scripts/cache/plants.json'
     
     def _get_data(self, path):
         return pd.read_csv(path)
@@ -157,25 +169,35 @@ class S3():
         return session.resource('s3')
 
 if __name__ == "__main__":   
-    MAX_STREAM = int(os.getenv('max_stream'))
+    parser = argparse.ArgumentParser(description='Simulate IoT Data generator')
+
+    # Define the argument(s) you want to read
+    parser.add_argument('--kafka', action='store_true', help='Enable Kafka')
+    parser.add_argument('--airflow', action='store_true', help='Enable Airflow')
+    parser.add_argument('--s3', action='store_true', help='Enable S3')
+    parser.add_argument('--max_stream', type=int, default=0, help='Maximum Stream')
+
+    args = parser.parse_args()
     
+    MAX_STREAM = args.max_stream if args.max_stream else 0
     stream_count = 1
     while True and stream_count <= MAX_STREAM:
         # Create random data
-        d = Device()
+        d = Device(args.airflow)
         data = d.create_data()
         
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         key = f"{data['device_id']}_{timestamp}"
         
-        # Upload it to s3
-        uploader = S3()
-        s3_session = uploader.create_s3_session()
-        s3_session.Object('temporarydevicedata', key).put(Body=json.dumps(data))
+        #Upload it to s3
+        if args.s3:
+            print("Send to S3s")
+            uploader = S3()
+            s3_session = uploader.create_s3_session()
+            s3_session.Object('temporarydevicedata', key).put(Body=json.dumps(data))
 
         # Stream to Kafka
-        if os.getenv('is_kafka_enabled') == "True":
-            print("Send to Kafka")
+        if args.kafka:
             broker = KafkaBroker()
             broker.send_message(topic_name="iot_devices_data", message_key=key, message=json.dumps(data))
         

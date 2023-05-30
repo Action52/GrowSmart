@@ -16,6 +16,7 @@ x-airflow-common:
     AIRFLOW__WEBSERVER__WEB_SERVER_PORT: 8081
   volumes:
     - ./dags:/opt/airflow/dags
+    - ./dags/iot-devices:/scripts
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
   user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
