@@ -1,3 +1,4 @@
+# The dag is created to join iot, plant and wather data from temporal formatted zone and place into the formatted zone (growsmartformattedzone s3 bucket) 
 #Import required packages
 from datetime import datetime, timedelta
 import boto3
