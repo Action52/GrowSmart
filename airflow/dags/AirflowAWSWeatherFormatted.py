@@ -1,3 +1,4 @@
+# The dag is created to clean and preprocess weather data and place into the temporal formatted zone (formattedtemporal s3 bucket) 
 #Import required packages
 from datetime import datetime, timedelta
 import boto3
