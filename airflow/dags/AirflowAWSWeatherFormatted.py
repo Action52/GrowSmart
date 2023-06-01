@@ -92,23 +92,22 @@ def clean_and_load_data():
     
     # Save the merged data as a CSV file in S3
     csv_key = f'weather_data'
-    cleaned_data.write.mode("overwrite").csv(f's3a://{destination_bucket}/{csv_key}', header=True)
+    cleaned_data.write.mode("overwrite").parquet(f's3a://{destination_bucket}/{csv_key}')
 
     print(f"Cleaned data saved as {csv_key} in {destination_bucket}")
 
     return 'stop'
 
 # Create a function to check the document presence in destination S3 bucket
-def check_weather_formatted_csv_existence():
+def check_weather_formatted_parquet_existence():
 
     prefix = f'weather_data/'
     response = s3.list_objects(Bucket=destination_bucket, Prefix=prefix)
-    files = [content['Key'] for content in response.get('Contents', []) if content['Key'].endswith('.csv')]
+    files = [content['Key'] for content in response.get('Contents', []) if content['Key'].lower().endswith('.parquet')]
 
     # If the files exist in the bucket, trigger the extract_and_transform task
     if files:
-        print(f"The following csv file exist in the destination S3 bucket: {files}")
-        return 'check_weather_formatted_csv_existence'
+        print(f"The following parquet file exist in the destination S3 bucket: {files}")
     else:
         return 'stop'
 
@@ -128,12 +127,13 @@ t2 = PythonOperator(
 
 #Define the csv check task
 t3 = PythonOperator(
-    task_id='check_weather_formatted_csv_existence',
-    python_callable=check_weather_formatted_csv_existence,
+    task_id='check_weather_formatted_parquet_existence',
+    python_callable=check_weather_formatted_parquet_existence,
     op_kwargs={'data': '{{ task_instance.xcom_pull(task_ids="clean_and_load_data") }}'},
     dag=dag)
 
 t1 >> t2 >> t3
+
 
 
 
