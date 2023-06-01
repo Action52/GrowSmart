@@ -155,10 +155,22 @@ def data_extraction():
     
     # Repartition, save, and return the result
     cleaned_data = cleaned_df.repartition(1)
-    cleaned_data.write.mode("overwrite").csv(f's3a://{destination_bucket}/plant_traits', header=True)
+    cleaned_data.write.mode("overwrite").parquet(f's3a://{destination_bucket}/plant_traits')
 
     return 'stop'
 
+def check_weather_formatted_parquet_existence():
+
+    prefix = f'plant_traits/'
+    response = s3.list_objects(Bucket=destination_bucket, Prefix=prefix)
+    files = [content['Key'] for content in response.get('Contents', []) if content['Key'].lower().endswith('.parquet')]
+
+    # If the files exist in the bucket, trigger the extract_and_transform task
+    if files:
+        print(f"The following parquet file exist in the destination S3 bucket: {files}")
+    else:
+        return 'stop'
+    
 #Define the checking task
 t1 = PythonOperator(
     task_id='latest_folder',
@@ -179,7 +191,12 @@ t3 = PythonOperator(
     op_kwargs={'data': '{{ task_instance.xcom_pull(task_ids="parquet_files") }}'},
     dag=dag)
 
-t1 >> t2 >> t3
+t4 = PythonOperator(
+    task_id='parquet_check',
+    python_callable=check_weather_formatted_parquet_existence,
+    op_kwargs={'data': '{{ task_instance.xcom_pull(task_ids="data_extraction") }}'},
+    dag=dag)
 
+t1 >> t2 >> t3 >> t4
 
 
