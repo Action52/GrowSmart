@@ -1,4 +1,5 @@
 # The dag is created to clean and preprocess iot data and place into the temporal formatted zone (formattedtemporal s3 bucket) 
+
 #Import required packages
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -131,9 +132,22 @@ def data_extraction():
 
     # Repartition, save, and return the cleaned DataFrame as CSV
     cleaned_data = cleaned_df.coalesce(1)
-    cleaned_data.write.mode("overwrite").csv(f's3a://{destination_bucket}/iot_data', header=True)
+    cleaned_data.write.mode("overwrite").parquet(f's3a://{destination_bucket}/iot_data')
 
     return 'stop'
+
+# Create a function to check the document presence in destination S3 bucket
+def check_weather_formatted_parquet_existence():
+
+    prefix = f'iot_data/'
+    response = s3.list_objects(Bucket=destination_bucket, Prefix=prefix)
+    files = [content['Key'] for content in response.get('Contents', []) if content['Key'].lower().endswith('.parquet')]
+
+    # If the files exist in the bucket, trigger the extract_and_transform task
+    if files:
+        print(f"The following parquet file exist in the destination S3 bucket: {files}")
+    else:
+        return 'stop'
 
 
 
@@ -157,7 +171,10 @@ t3 = PythonOperator(
     op_kwargs={'data': '{{ task_instance.xcom_pull(task_ids="parquet_files") }}'},
     dag=dag)
 
-t1 >> t2 >> t3
+t4 = PythonOperator(
+    task_id='parquet_check',
+    python_callable=check_weather_formatted_parquet_existence,
+    op_kwargs={'data': '{{ task_instance.xcom_pull(task_ids="data_extraction") }}'},
+    dag=dag)
 
-
-
+t1 >> t2 >> t3 >> t4
