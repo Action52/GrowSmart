@@ -54,17 +54,17 @@ def set_nullable(schema):
 def join():
     # Get one file from iot_data folder
     iot_response = s3.list_objects(Bucket=source_bucket, Prefix='iot_data/', Delimiter='/')
-    iot_files = [content['Key'] for content in iot_response.get('Contents', []) if content['Key'].endswith('.csv')]
+    iot_files = [content['Key'] for content in iot_response.get('Contents', []) if content['Key'].lower().endswith('.parquet')]
     iot_file = iot_files[0] if iot_files else None
 
     # Get one file from weather_data folder
     weather_response = s3.list_objects(Bucket=source_bucket, Prefix='weather_data/', Delimiter='/')
-    weather_files = [content['Key'] for content in weather_response.get('Contents', []) if content['Key'].endswith('.csv')]
+    weather_files = [content['Key'] for content in weather_response.get('Contents', []) if content['Key'].lower().endswith('.parquet')]
     weather_file = weather_files[0] if weather_files else None
 
     # Get one file from plants_data folder
     plants_response = s3.list_objects(Bucket=source_bucket, Prefix='plant_traits/', Delimiter='/')
-    plants_files = [content['Key'] for content in plants_response.get('Contents', []) if content['Key'].endswith('.csv')]
+    plants_files = [content['Key'] for content in plants_response.get('Contents', []) if content['Key'].lower().endswith('.parquet')]
     plants_file = plants_files[0] if plants_files else None
 
     if not iot_file or not weather_file or not plants_file:
@@ -72,9 +72,9 @@ def join():
         return 'stop'
 
     # Read the files as Spark DataFrames
-    iot_df = spark.read.csv(f's3a://{source_bucket}/{iot_file}', header=True)
-    weather_df = spark.read.csv(f's3a://{source_bucket}/{weather_file}', header=True)
-    plants_df = spark.read.csv(f's3a://{source_bucket}/{plants_file}', header=True)
+    iot_df = spark.read.parquet(f's3a://{source_bucket}/{iot_file}')
+    weather_df = spark.read.parquet(f's3a://{source_bucket}/{weather_file}')
+    plants_df = spark.read.parquet(f's3a://{source_bucket}/{plants_file}')
 
     # Specify column names for the duplicate columns
     iot_df_with_alias = iot_df.select([col(c).alias(f"iot_{c}") for c in iot_df.columns])
@@ -102,22 +102,22 @@ def join():
 
 
     # Save the merged data as a CSV file in S3
-    final_df.write.mode("overwrite").csv(f's3a://{destination_bucket}/{today}/', header=True)
+    final_df.write.mode("overwrite").parquet(f's3a://{destination_bucket}/{today}/')
 
     print(f"Cleaned data saved in {destination_bucket}/joined_data/")
 
     return 'stop'
 
 # Create a function to check the document presence in destination S3 bucket
-def check_formatted_csv_existence():
+def check_formatted_parquet_existence():
 
     prefix = f'{today}/'
     response = s3.list_objects(Bucket=destination_bucket, Prefix=prefix)
-    files = [content['Key'] for content in response.get('Contents', []) if content['Key'].endswith('.csv')]
+    files = [content['Key'] for content in response.get('Contents', []) if content['Key'].lower().endswith('.parquet')]
 
     # If the files exist in the bucket, trigger the extract_and_transform task
     if files:
-        print(f"The following csv file exists in the destination S3 bucket: {files}")
+        print(f"The following parquet file exists in the destination S3 bucket: {files}")
     else:
         return ("The csv file was not found in the destination S3 bucket")
 
@@ -148,7 +148,7 @@ join_iot_weather_task= PythonOperator(
 
 check_formatted_csv_existence_task= PythonOperator(
     task_id = 'check_formatted_csv_existence',
-    python_callable = check_formatted_csv_existence,
+    python_callable = check_formatted_parquet_existence,
     dag = dag)
 
 delete_temporal_files_task= PythonOperator(
@@ -164,4 +164,4 @@ finish = DummyOperator(task_id="finish", dag=dag)
 
 #Create process flow
 
-start >> join_iot_weather_task >> check_formatted_csv_existence_task >> delete_temporal_files_task >> finish 
+start >> join_iot_weather_task >> check_formatted_csv_existence_task >> delete_temporal_files_task >> finish  
