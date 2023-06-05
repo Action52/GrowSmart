@@ -120,6 +120,7 @@ class StreamAnalytics():
             # Check if the count exceeds the threshold
             if len(self.heavy_hitters) < self.K:
                 self.heavy_hitters[garden_id] = count
+            # Update the heavy hitters
             else:
                 curr_min = min(self.heavy_hitters, key=self.heavy_hitters.get)
                 min_freq = self.heavy_hitters[curr_min]
