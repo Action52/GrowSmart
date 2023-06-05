@@ -22,6 +22,9 @@ confluent-kafka = "^2.1.1"
 findspark = "^2.0.1"
 kafka-python = "^2.0.2"
 pyspark = "3.3.1"
+pyprobables = "^0.5.8"
+pyarrow = "^12.0.0"
+elasticsearch = "^8.8.0"
 
 [tool.black]
 line-length = 119

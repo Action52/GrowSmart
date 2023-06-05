@@ -13,19 +13,13 @@ from confluent_kafka import Producer
 from dotenv import load_dotenv
 load_dotenv()
 
-# Get the current directory
-current_dir = os.getcwd()
-# Define the absolute path to the script
-
-
-
 class Device():
     '''
         Simulate IoT Device data streaming, it will generate IoT devices data from different data sources.
     '''
     
     data = {}
-    DEVICES_PATH =  '/data/devices.csv'
+    DEVICES_PATH =  './data/devices.csv'
     CROPS_PATH = './data/crops.csv'
     SPECIES_PATH = './data/species.csv'
     PLANT_CACHE_PATH = './cache/plants.json'
@@ -61,14 +55,15 @@ class Device():
     def _get_data(self, path):
         return pd.read_csv(path)
     
-    def _build_data(self, devices, crops, species):
+    def _build_data(self, devices, crops, species, timestamp):
         rand_data  = self.MAPPING[random.randrange(0, self.MAPPING_SIZE)]
         plant_cache = self._read_plant_cache()
         
         # If cache is not full generate new data else get data from cache
-        if len(plant_cache[rand_data['device_id']]) < self.CONSTRAINT[rand_data['garden_name']]:
+        if rand_data['device_id'] not in plant_cache  or len(plant_cache[rand_data['device_id']]) < self.CONSTRAINT[rand_data['garden_name']]:
             plant_id = str(uuid.uuid4())
             species_id = str(int(species['Species_id']))
+            plant_cache.setdefault(rand_data['device_id'], [])
             plant_cache[rand_data['device_id']].append(f'{plant_id}:{species_id}')
             
             # Write to cache
@@ -99,12 +94,13 @@ class Device():
             "garden_name": rand_data['garden_name'],
             "location": rand_data['location'],
             'species_id': species_id,
-            'plant_id': plant_id
+            'plant_id': plant_id,
+            "timestamp": timestamp
         }
         
         return self.data
     
-    def create_data(self):
+    def create_data(self, timestamp):
         '''
             Simulate iot data by shuffling data from csv file
         '''
@@ -119,7 +115,8 @@ class Device():
         return self._build_data(
             devices.loc[random.randrange(0, devices_size)], 
                     crops.loc[random.randrange(0, crops_size)],
-                    species.loc[random.randrange(0, species_size)]
+                    species.loc[random.randrange(0, species_size)],
+                    timestamp
             )
     
     def _read_plant_cache(self):
@@ -171,7 +168,7 @@ class S3():
 if __name__ == "__main__":   
     parser = argparse.ArgumentParser(description='Simulate IoT Data generator')
 
-    # Define the argument(s) you want to read
+    # Define the argument for the script
     parser.add_argument('--kafka', action='store_true', help='Enable Kafka')
     parser.add_argument('--airflow', action='store_true', help='Enable Airflow')
     parser.add_argument('--s3', action='store_true', help='Enable S3')
@@ -184,14 +181,14 @@ if __name__ == "__main__":
     while True and stream_count <= MAX_STREAM:
         # Create random data
         d = Device(args.airflow)
-        data = d.create_data()
         
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        data = d.create_data(timestamp)
+        
         key = f"{data['device_id']}_{timestamp}"
         
         #Upload it to s3
         if args.s3:
-            print("Send to S3s")
             uploader = S3()
             s3_session = uploader.create_s3_session()
             s3_session.Object('temporarydevicedata', key).put(Body=json.dumps(data))
