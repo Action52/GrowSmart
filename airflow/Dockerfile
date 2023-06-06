@@ -1,4 +1,30 @@
+# First stage: Base on bitnami/spark:3.3
+FROM bitnami/spark:3.3 AS spark-base
+
+# Second stage: Base on apache/airflow:2.5.2
 FROM apache/airflow:2.5.2
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+
+# Install necessary packages
+USER root
+RUN apt-get update -y && apt-get install -y procps wget openjdk-11-jdk
+
+# Install Python 3.9
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt-get install -y python3.9
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
+RUN apt-get install -y python3.9-distutils python3.9-dev python3.9-venv
+RUN curl https://bootstrap.pypa.io/get-pip.py | python3.9
+
+# Copy /opt/bitnami/spark from the first stage
+COPY --from=spark-base /opt/bitnami/spark /opt/bitnami/spark
+
+ENV SPARK_HOME /opt/bitnami/spark
+ENV PATH $PATH:${SPARK_HOME}/bin
+ENV PYSPARK_PYTHON python3.9
+ENV PYSPARK_DRIVER_PYTHON python3.9
+
+USER airflow
+RUN pip install pyspark
 RUN pip install apache-airflow[aws,apache.spark]
+RUN pip install apache-airflow-providers-ssh

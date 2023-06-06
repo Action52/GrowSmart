@@ -1,25 +1,37 @@
 import sys
+import uuid
+
 from pyspark.sql import SparkSession
 from pyspark import SparkConf, SparkContext
 from pyspark.sql.functions import monotonically_increasing_id
 from pyspark.sql.functions import lit, to_date, unix_timestamp, current_date, col, concat
 from pyspark.sql import DataFrame
 import logging
-from datetime import date
+from datetime import date, datetime
+from pyspark.sql.functions import udf, round, pandas_udf
+from pyspark.sql.types import StringType, DoubleType
+from uuid import uuid5
+
+
+@udf(returnType=StringType())
+def generate_uuid(beginning, *cols):
+    hashed = str(uuid5(uuid.NAMESPACE_DNS, "-".join([col_name for col_name in cols])))
+    stringed = f"{beginning}_{hashed}"
+    return stringed
 
 
 def create_garden_nodes_df(df: DataFrame):
-    gardens = df.select("garden_id", "garden_name", "city", "plant_id", "sensor_id")\
+    gardens = df.select("iot_garden_id", "iot_garden_name", "weather_city", "iot_plant_id", "iot_sensor_id")\
         .distinct()\
-        .withColumn(":ID", col("garden_id"))\
+        .withColumn(":ID", concat(lit("GARDEN_"), col("iot_garden_id")))\
         .withColumn(":LABEL", lit("Garden"))
     return gardens
 
 
 def create_sensor_nodes_df(df: DataFrame):
-    sensors = df.select("sensor_id", "garden_id", "plant_id", "event_id")\
+    sensors = df.select("iot_sensor_id", "iot_garden_id", "iot_plant_id", "event_id")\
         .distinct()\
-        .withColumn(":ID", col("sensor_id"))\
+        .withColumn(":ID", concat(lit("SENSOR_"), col("iot_sensor_id")))\
         .withColumn(":LABEL", lit("Sensor"))
     return sensors
 
@@ -29,47 +41,48 @@ def create_sensor_data_nodes_df(df: DataFrame, sensor_data_cols=[]):
         sensor_data_cols = ["light", "motion", "co", "humidity", 'smoke', 'temp', 'lpg',
                             "soil_ph", "rainfall", "soil_temp", "soil_humidity", "soil_nitrogen",
                             "soil_potassium", "soil_phosporous"]
+    sensor_data_cols = [f"iot_{sens}" for sens in sensor_data_cols]
     all_cols = []
-    all_cols.extend(["sensor_id", "garden_id", "plant_id", "event_id"])
+    all_cols.extend(["iot_sensor_id", "iot_garden_id", "iot_plant_id", "event_id"])
     all_cols.extend(sensor_data_cols)
     sensor_data = df.select(all_cols)\
         .distinct()\
-        .withColumn(":ID", concat(col("event_id"), monotonically_increasing_id()))\
+        .withColumn(":ID", generate_uuid(lit("SENSORDATA"), col("event_id"), col("iot_sensor_id")))\
         .withColumn(":LABEL", lit("SensorData"))
     return sensor_data
 
 
 def create_event_nodes_df(df: DataFrame):
     all_cols = []
-    all_cols.extend(["event_id", "sensor_id", "today"])
+    all_cols.extend(["event_id", "iot_sensor_id", "today"])
     events = df.select(all_cols)\
         .distinct()\
-        .withColumn(":ID", col("event_id"))\
+        .withColumn(":ID", concat(lit("EVENT_"), col("event_id")))\
         .withColumn(":LABEL", lit("Event"))
     return events
 
 
 def create_plant_nodes_df(df: DataFrame):
-    plants = df.select("plant_id", "garden_id", "species_id60", "sensor_id")\
+    plants = df.select("iot_plant_id", "iot_garden_id", "iot_species_id", "iot_sensor_id")\
         .distinct()\
-        .withColumn(":ID", col("plant_id"))\
+        .withColumn(":ID", concat(lit("PLANT_"), col("iot_plant_id")))\
         .withColumn(":LABEL", lit("Plant"))
     return plants
 
 
 def create_species_nodes_df(df: DataFrame):
-    all_cols = ["plant_id", "species_id60"]
+    all_cols = ["iot_plant_id", "iot_species_id"]
     species = df.select(all_cols)\
         .distinct()\
-        .withColumn(":ID", col("species_id60"))\
+        .withColumn(":ID", concat(lit("SPECIES_"), col("iot_species_id")))\
         .withColumn(":LABEL", lit("Species"))
     return species
 
 
-def create_location_nodes_df(df:DataFrame):
-    locations = df.select("city", "garden_id")\
+def create_location_nodes_df(df: DataFrame):
+    locations = df.select("weather_city", "iot_garden_id")\
         .distinct()\
-        .withColumn(":ID", col("city"))\
+        .withColumn(":ID", concat(lit("LOCATION_"), col("weather_city")))\
         .withColumn(":LABEL", lit("Location"))
     return locations
 
@@ -78,18 +91,19 @@ def create_weather_nodes_df(df: DataFrame, weather_cols=[]):
     if not weather_cols:
         weather_cols = ['temperature_2m_max', 'temperature_2m_min', 'rain_sum',
                         'showers_sum', 'snowfall_sum', 'precipitation_probability_max']
-    all_cols = ["city", "today", "prediction_date"]
+    weather_cols = [f"weather_{weath}" for weath in weather_cols]
+    all_cols = ["weather_city", "today", "weather_prediction_date"]
     all_cols.extend(weather_cols)
     weathers = df.select(all_cols)\
         .distinct()\
-        .withColumn(":ID", concat(col("city"), col("today"), monotonically_increasing_id()))\
+        .withColumn(":ID", generate_uuid(lit("WEATHER"), col("weather_city"), col("today")))\
         .withColumn(":LABEL", lit("WeatherForecast"))
     return weathers
 
 
 def create_date_nodes_df(df: DataFrame):
-    dates_predicted = df.select("prediction_date", "event_id")\
-        .withColumn(":ID", col("prediction_date"))\
+    dates_predicted = df.select("weather_prediction_date", "event_id")\
+        .withColumn(":ID", col("weather_prediction_date"))\
         .withColumn(":LABEL", lit("Date"))\
         .select(":ID", ":LABEL")
     dates_today = df.select("today", "event_id")\
@@ -108,84 +122,85 @@ def create_plant_characteristics_nodes_df(df: DataFrame, plant_data_cols=[]):
                            "Woodiness", "Growth_Form", "Succulence", "Nutrition_type_parasitism",
                            "Nutrition_type_carnivory", "Leaf_type", "Leaf_area_mm2", "Leaf_area_n_o",
                            "Plant_height_m", "Plant_height_n_o"]
-    all_cols = ["species_id60"]
+    plant_data_cols = [f"plants_{plant}" for plant in plant_data_cols]
+    all_cols = ["iot_species_id"]
     all_cols.extend(plant_data_cols)
     plant_data = df.select(all_cols)\
         .distinct()\
-        .withColumn(":ID", concat(col("species_id60"), monotonically_increasing_id()))\
+        .withColumn(":ID", concat(lit("SPECIESDATA_"), col("iot_species_id")))\
         .withColumn(":LABEL", lit("SpeciesData"))
     return plant_data
 
 
 def create_described_by_edge(species_df: DataFrame, plant_characteristics_df: DataFrame):
-    # Perform an inner join on species_id60
-    join_condition = species_df['species_id60'] == plant_characteristics_df['species_id60']
+    # Perform an inner join on species_id
+    join_condition = species_df['iot_species_id'] == plant_characteristics_df['iot_species_id']
     df = species_df.join(plant_characteristics_df, join_condition, 'inner')
 
     # Define the edges
-    edges = df.select(species_df['species_id60'].alias(':START_ID'),
+    edges = df.select(species_df[':ID'].alias(':START_ID'),
                       plant_characteristics_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('DESCRIBED_BY'))
+        .withColumn(':TYPE', lit('DESCRIBED_BY'))\
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
     return edges
 
 
 def create_plant_type_edge(plant_df: DataFrame, species_df: DataFrame):
-    # Alias the dataframes
-    plant_df_alias = plant_df.alias('plant_df')
-    species_df_alias = species_df.alias('species_df')
-
-    # Perform an inner join on species_id60
-    join_condition = plant_df_alias['species_id60'] == species_df_alias['species_id60']
-    df = plant_df_alias.join(species_df_alias, join_condition, 'inner')
+    # Perform an inner join on species_id
+    join_condition = plant_df['iot_species_id'] == species_df['iot_species_id']
+    df = plant_df.join(species_df, join_condition, 'inner')
 
     # Define the edges
-    edges = df.select(df['plant_df.plant_id'].alias(':START_ID'),
-                      df['species_df.species_id60'].alias(':END_ID')) \
+    edges = df.select(plant_df[':ID'].alias(':START_ID'),
+                      species_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('PLANT_TYPE'))
+        .withColumn(':TYPE', lit('PLANT_TYPE')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
     return edges
 
 
-
 def create_measures_edge(plant_df: DataFrame, sensor_data_df: DataFrame):
-    # Perform an inner join on plant_id
-    join_condition = plant_df['plant_id'] == sensor_data_df['plant_id']
+    # Perform an inner join on iot_plant_id
+    join_condition = plant_df['iot_plant_id'] == sensor_data_df['iot_plant_id']
     df = plant_df.join(sensor_data_df, join_condition, 'inner')
 
     # Define the edges
     edges = df.select(sensor_data_df[':ID'].alias(':START_ID'),
                       plant_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('MEASURES'))
+        .withColumn(':TYPE', lit('MEASURES')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
 
     return edges
 
 
 def create_has_plant_edge(garden_df: DataFrame, plant_df: DataFrame):
-    # Perform an inner join on garden_id
-    join_condition = garden_df['garden_id'] == plant_df['garden_id']
+    # Perform an inner join on iot_garden_id
+    join_condition = garden_df['iot_garden_id'] == plant_df['iot_garden_id']
     df = garden_df.join(plant_df, join_condition, 'inner')
 
     # Define the edges
     edges = df.select(garden_df[':ID'].alias(':START_ID'),
                       plant_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('HAS_PLANT'))
+        .withColumn(':TYPE', lit('HAS_PLANT')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
 
     return edges
 
 
 def create_has_sensor_edge(garden_df: DataFrame, sensor_df: DataFrame):
-    # Perform an inner join on garden_id
-    join_condition = garden_df['garden_id'] == sensor_df['garden_id']
+    # Perform an inner join on iot_garden_id
+    join_condition = garden_df['iot_garden_id'] == sensor_df['iot_garden_id']
     df = garden_df.join(sensor_df, join_condition, 'inner')
 
     # Define the edges
     edges = df.select(garden_df[':ID'].alias(':START_ID'),
                       sensor_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('HAS_SENSOR'))
+        .withColumn(':TYPE', lit('HAS_SENSOR')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
 
     return edges
 
@@ -199,49 +214,53 @@ def create_registers_edge(sensor_df: DataFrame, event_df: DataFrame):
     edges = df.select(sensor_df[':ID'].alias(':START_ID'),
                       event_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('REGISTERS'))
+        .withColumn(':TYPE', lit('REGISTERS')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
 
     return edges
 
 
 def create_located_in_edge(garden_df: DataFrame, location_df: DataFrame):
-    # Perform an inner join on garden_id
-    join_condition = garden_df['garden_id'] == location_df['garden_id']
+    # Perform an inner join on iot_garden_id
+    join_condition = garden_df['iot_garden_id'] == location_df['iot_garden_id']
     df = garden_df.join(location_df, join_condition, 'inner')
 
     # Define the edges
     edges = df.select(garden_df[':ID'].alias(':START_ID'),
                       location_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('LOCATED_IN'))
+        .withColumn(':TYPE', lit('LOCATED_IN')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
 
     return edges
 
 
 def create_predicted_for_edge(weather_df: DataFrame, location_df: DataFrame):
-    # Perform an inner join on city
-    join_condition = weather_df['city'] == location_df['city']
+    # Perform an inner join on weather_city
+    join_condition = weather_df['weather_city'] == location_df['weather_city']
     df = weather_df.join(location_df, join_condition, 'inner')
 
     # Define the edges
     edges = df.select(weather_df[':ID'].alias(':START_ID'),
                       location_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('PREDICTED_FOR'))
+        .withColumn(':TYPE', lit('PREDICTED_FOR')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
 
     return edges
 
 
 def create_tomorrow_date_edge(weather_df: DataFrame, date_df: DataFrame):
-    # Perform an inner join on prediction_date
-    join_condition = weather_df['prediction_date'] == date_df[':ID']
+    # Perform an inner join on weather_prediction_date
+    join_condition = weather_df['weather_prediction_date'] == date_df[':ID']
     df = weather_df.join(date_df, join_condition, 'inner')
 
     # Define the edges
     edges = df.select(weather_df[':ID'].alias(':START_ID'),
                       date_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('TOMORROW_DATE'))
+        .withColumn(':TYPE', lit('TOMORROW_DATE')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
 
     return edges
 
@@ -255,7 +274,8 @@ def create_today_date_edge(event_df: DataFrame, date_df: DataFrame):
     edges = df.select(event_df[':ID'].alias(':START_ID'),
                       date_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('TODAY_DATE'))
+        .withColumn(':TYPE', lit('TODAY_DATE')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
 
     return edges
 
@@ -269,33 +289,61 @@ def create_contains_edge(event_df: DataFrame, sensor_data_df: DataFrame):
     edges = df.select(event_df[':ID'].alias(':START_ID'),
                       sensor_data_df[':ID'].alias(':END_ID')) \
         .distinct() \
-        .withColumn(':TYPE', lit('CONTAINS'))
+        .withColumn(':TYPE', lit('CONTAINS')) \
+        .withColumn(':ID', generate_uuid(lit("E"), col(":START_ID"), col(":END_ID")))
 
     return edges
 
 
-def transform(s3_master_url, s3_url, file_path, aws_access_key_id, aws_secret_access_key):
-    spark = SparkSession.builder\
-        .appName("readS3")\
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-        .config("spark.hadoop.fs.s3a.access.key", aws_access_key_id) \
-        .config("spark.hadoop.fs.s3a.secret.key", aws_secret_access_key) \
-        .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
-        .config('spark.hadoop.fs.s3a.aws.credentials.provider', 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider') \
-        .config('spark.driver.extraJavaOptions', '-Dcom.amazonaws.services.s3.enableV4')\
-        .config('fs.s3a.endpoint', 's3.eu-west-3.amazonaws.com') \
-        .getOrCreate()
+def round_float_cols(df):
+    for col_name in df.schema:
+        if isinstance(col_name.dataType, DoubleType):
+            df = df.withColumn(col_name.name, round(col(col_name.name), 3))
+    return df
+
+
+def transform(s3_master_url, s3_url, file_path, aws_access_key_id, aws_secret_access_key, mode="INFO"):
+    conf = {
+        "spark.jars": "/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.11.1026.jar,/opt/bitnami/spark/jars/hadoop-aws-3.3.2.jar",
+        "spark.jars.packages": "net.java.dev.jets3t:jets3t:0.9.3",
+        "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
+        "spark.hadoop.fs.s3a.access.key": aws_access_key_id,
+        "spark.hadoop.fs.s3a.secret.key": aws_secret_access_key,
+        "spark.hadoop.fs.s3a.endpoint": "s3.amazonaws.com",
+        "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+        "spark.driver.extraJavaOptions": "-Dcom.amazonaws.services.s3.enableV4",
+        "fs.s3a.endpoint": "s3.eu-west-3.amazonaws.com",
+        "spark.driver.memory": "2G",
+        #"spark.driver.host": "airflow-airflow-worker-1",
+        "spark.executor.memory": "1200M",
+        "spark.executor.memoryOverhead": "800M",
+        #"spark.network.timeout": "500s",
+        #"spark.executor.heartbeatInterval": "480s"
+    }
+
+    spark = SparkSession.builder.appName("readS3")
+
+    for key, value in conf.items():
+        spark = spark.config(key, value)
+
+    spark = spark.getOrCreate()
+
+    spark.sparkContext.setLogLevel("ERROR")
 
     # The S3 file path is the S3 URL concatenated with the file path
     s3_file_path = f'{s3_url}/{file_path}'
-    print(s3_file_path)
+    print("S3 FILE PATH: ", s3_file_path)
     df = (
-        spark.read.csv(s3_file_path, header=True, inferSchema=False)
-        #.withColumnRenamed("species_id6060", "species_id60")
-        .withColumn("prediction_date", to_date(unix_timestamp("prediction_date", "dd/MM/yy").cast("timestamp")))
-        .withColumn("today", lit(current_date()))
-        .withColumn("event_id", concat(col("sensor_id"), col("today"), monotonically_increasing_id()))
+        spark.read.parquet(s3_file_path, header=True, inferSchema=False)
+        #.withColumnRenamed("iot_species_id60", "iot_species_id")
+        .withColumn("weather_prediction_date", col("weather_prediction_date"))\
+        .withColumn("today", current_date().cast(StringType()))\
+        .withColumn("event_id", generate_uuid(
+            lit(""), col("iot_sensor_id"), col("today"), col("iot_plant_id")))
     )
+
+    df = round_float_cols(df)
+    df.printSchema() # Check
 
     # Create the nodes dataframes
     garden_nodes_df = create_garden_nodes_df(df)
@@ -309,6 +357,8 @@ def transform(s3_master_url, s3_url, file_path, aws_access_key_id, aws_secret_ac
     date_nodes_df = create_date_nodes_df(df)
     plant_characteristics_nodes_df = create_plant_characteristics_nodes_df(df)
 
+    print("Successfully created node dfs")
+    #
     # Create the edges dataframes
     described_by_edge_df = create_described_by_edge(species_nodes_df, plant_characteristics_nodes_df)
     plant_type_edge_df = create_plant_type_edge(plant_nodes_df, species_nodes_df)
@@ -322,36 +372,54 @@ def transform(s3_master_url, s3_url, file_path, aws_access_key_id, aws_secret_ac
     today_date_edge_df = create_today_date_edge(event_nodes_df, date_nodes_df)
     contains_edge_df = create_contains_edge(event_nodes_df, sensor_data_nodes_df)
 
+    print("Successfully created edges dfs")
+    #
     # Drop the unnecessary columns that were used to join
-    garden_nodes_df = garden_nodes_df.drop("city", "plant_id", "sensor_id").distinct()
-    sensor_nodes_df = sensor_nodes_df.drop("garden_id", "plant_id", "event_id").distinct()
-    sensor_data_nodes_df = sensor_data_nodes_df.drop("sensor_id", "garden_id", "plant_id", "event_id").distinct()
-    event_nodes_df = event_nodes_df.drop("sensor_id", "today").distinct()
-    plant_nodes_df = plant_nodes_df.drop("garden_id", "species_id60", "sensor_id").distinct()
-    species_nodes_df = species_nodes_df.drop("plant_id").distinct()
-    location_nodes_df = location_nodes_df.drop("garden_id").distinct()
-    weather_nodes_df = weather_nodes_df.drop("city", "today", "prediction_date").distinct()
+    garden_nodes_df = garden_nodes_df.drop("weather_city", "iot_plant_id", "iot_sensor_id").distinct()
+    sensor_nodes_df = sensor_nodes_df.drop("iot_garden_id", "iot_plant_id", "event_id").distinct()
+    sensor_data_nodes_df = sensor_data_nodes_df.drop("iot_sensor_id", "iot_garden_id", "iot_plant_id", "event_id").distinct()
+    event_nodes_df = event_nodes_df.drop("iot_sensor_id", "today").distinct()
+    plant_nodes_df = plant_nodes_df.drop("iot_garden_id", "iot_species_id", "iot_sensor_id").distinct()
+    species_nodes_df = species_nodes_df.drop("iot_plant_id").distinct()
+    location_nodes_df = location_nodes_df.drop("iot_garden_id").distinct()
+    weather_nodes_df = weather_nodes_df.drop("weather_city", "today", "weather_prediction_date").distinct()
     date_nodes_df = date_nodes_df
-    plant_characteristics_nodes_df = plant_characteristics_nodes_df.drop("species_id60").distinct()
+    plant_characteristics_nodes_df = plant_characteristics_nodes_df.drop("iot_species_id").distinct()
+
+    print("Successfully dropped duplicates")
+
+    today_day = datetime.now().strftime('%Y-%m-%d')
 
     # Save the nodes dataframes on s3
-    for df, name in zip([garden_nodes_df, sensor_nodes_df, sensor_data_nodes_df, event_nodes_df, plant_nodes_df,
-                         species_nodes_df, location_nodes_df, weather_nodes_df, date_nodes_df,
-                         plant_characteristics_nodes_df],
-                        ['garden_nodes', 'sensor_nodes', 'sensor_data_nodes', 'event_nodes', 'plant_nodes',
-                         'species_nodes', 'location_nodes', 'weather_nodes', 'date_nodes',
-                         'plant_characteristics_nodes']):
-        df.coalesce(1).write.csv(f'{s3_url}/nodes/{name}', mode='overwrite', header=True)
+    for node_df, name in zip(
+            [garden_nodes_df, sensor_nodes_df, sensor_data_nodes_df, event_nodes_df, plant_nodes_df,
+             species_nodes_df, location_nodes_df, weather_nodes_df, date_nodes_df,
+             plant_characteristics_nodes_df],
+            ['garden_nodes', 'sensor_nodes', 'sensor_data_nodes', 'event_nodes', 'plant_nodes',
+             'species_nodes', 'location_nodes', 'weather_nodes', 'date_nodes',
+             'plant_characteristics_nodes']):
+        print(f"Saving {name}")
+        node_df.show(5)
+        node_df.write.csv(f'{s3_url}/nodes/{today_day}/{name}.csv', header=True, mode='overwrite')
+        # node_df.checkpoint()
 
+    print("Successfully saved nodes")
+
+
+    # spark.catalog.clearCache()
     # Save the edges dataframes on s3
-    for df, name in zip([described_by_edge_df, plant_type_edge_df, measures_edge_df, has_plant_edge_df,
+    for edge_df, name in zip([described_by_edge_df, plant_type_edge_df, measures_edge_df, has_plant_edge_df,
                          has_sensor_edge_df, registers_edge_df, located_in_edge_df, predicted_for_edge_df,
                          tomorrow_date_edge_df, today_date_edge_df, contains_edge_df],
                         ['described_by_edges', 'plant_type_edges', 'measures_edges', 'has_plant_edges',
                          'has_sensor_edges', 'registers_edges', 'located_in_edges', 'predicted_for_edges',
                          'tomorrow_date_edges', 'today_date_edges', 'contains_edges']):
-        df.coalesce(1).write.csv(f'{s3_url}/edges/{name}', mode='overwrite', header=True)
+        print(f"Saving {name}")
+        edge_df.show(5)
+        edge_df.write.csv(f'{s3_url}/edges/{today_day}/{name}.csv', mode='overwrite', header=True)
+        # edge_df.checkpoint()
 
+    print("Successfully saved edges")
     spark.stop()
 
 

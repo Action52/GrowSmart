@@ -144,3 +144,4 @@ kafka_log/
 kafka_data/
 zookeeper_data/
 /spark/jars/
+/spark/scripts/growsmart-proxy2.pem
