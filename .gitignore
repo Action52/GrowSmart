@@ -136,3 +136,15 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Kafka
+kafka_connect_config/
+kafka_connect_data/
+kafka_log/
+kafka_data/
+zookeeper_data/
+
+# Cache
+cache
+/spark/jars/
+/spark/scripts/growsmart-proxy2.pem

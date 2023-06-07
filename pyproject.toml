@@ -18,6 +18,8 @@ awscli = "^1.27.110"
 s3fs = "<=0.4"
 fastparquet = "^2023.2.0"
 python-dotenv = "^1.0.0"
+confluent-kafka = "^2.1.1"
+apache-airflow-providers-ssh = "^3.7.0"
 
 [tool.black]
 line-length = 119
