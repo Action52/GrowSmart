@@ -54,7 +54,7 @@ class Device():
     
     def _get_data(self, path):
         return pd.read_csv(path)
-    
+
     def _build_data(self, devices, crops, species, timestamp):
         rand_data  = self.MAPPING[random.randrange(0, self.MAPPING_SIZE)]
         plant_cache = self._read_plant_cache()
@@ -192,7 +192,7 @@ if __name__ == "__main__":
             uploader = S3()
             s3_session = uploader.create_s3_session()
             s3_session.Object('temporarydevicedata', key).put(Body=json.dumps(data))
-
+            
         # Stream to Kafka
         if args.kafka:
             broker = KafkaBroker()

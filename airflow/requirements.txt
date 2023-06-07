@@ -1,6 +1,5 @@
 s3fs<=0.4
 pandas
 boto3
-pyspark
-confluent-kafka
-pandas
+pyspark==3.1.3
+apache-airflow-providers-apache-spark

@@ -19,6 +19,8 @@ x-airflow-common:
     - ./dags/iot-devices:/scripts
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
+    - ../spark/scripts/:/scripts
+    #- ./dags/jars:/opt/bitnami/spark/jars
   user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
   depends_on:
     redis:
@@ -82,7 +84,6 @@ services:
     command: celery worker
     restart: always
     networks:
-      - my_network
       - local
 
   airflow-init:
@@ -111,9 +112,52 @@ services:
     networks:
       - local
 
+  spark-master:
+    image: docker.io/bitnami/spark:3.3
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    networks:
+      - local
+    ports:
+      - '8080:8080'
+      - '7077:7077'
+      - '4040:4040'
+    volumes:
+      - ../spark/scripts:/scripts
+      - ./dags/jars:/jars
+
+
+  spark-worker:
+    image: docker.io/bitnami/spark:3.3
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+      - SPARK_WORKER_WEBUI_PORT=8082
+    ports:
+      - "8082:8082"
+      - "4041:4040"
+    networks:
+      - local
+    depends_on:
+      - spark-master
+    volumes:
+      - ./dags/jars:/jars
+
+
 volumes:
   postgres-db-volume:
 
 networks:
-  my_network:
   local:

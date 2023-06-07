@@ -19,12 +19,7 @@ s3fs = "<=0.4"
 fastparquet = "^2023.2.0"
 python-dotenv = "^1.0.0"
 confluent-kafka = "^2.1.1"
-findspark = "^2.0.1"
-kafka-python = "^2.0.2"
-pyspark = "3.3.1"
-pyprobables = "^0.5.8"
-pyarrow = "^12.0.0"
-elasticsearch = "^8.8.0"
+apache-airflow-providers-ssh = "^3.7.0"
 
 [tool.black]
 line-length = 119
