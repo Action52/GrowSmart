@@ -9,6 +9,8 @@ To use GrowSmart, you will need to have the following installed on your computer
 
 - Docker
 - Docker Compose
+- aws-java-sdk-bundle-1.11.874.jar file
+
 
 It is highly recommended that you have at least 8GB of RAM in your machine.
 
@@ -17,10 +19,12 @@ It is highly recommended that you have at least 8GB of RAM in your machine.
 To install and set up GrowSmart, follow these steps:
 
 1. Clone the repository to your local machine: `git clone https://github.com/Action52/GrowSmart.git`
-2. Navigate to the `airflow` directory: `cd growsmart/airflow`
-3. Run the following command to start the Docker containers: `docker-compose up -d`
-4. Wait for the containers to start up (this may take a few minutes).
-5. Access the Airflow web UI by opening your browser and navigating to `http://localhost:8080`
+2. Navigate to the `airflow` directory: `cd growsmart/airflow/jars`
+3. Copy aws-java-sdk-bundle-1.11.874.jar from local path into jars folder: `cp /path/to/source/aws-java-sdk-bundle-1.11.874.jar growsmart/airflow/jars`
+4. Navigate to the `airflow` directory: `cd ..`
+5. Run the following command to start the Docker containers: `docker-compose up -d`
+6. Wait for the containers to start up (this may take a few minutes).
+7. Access the Airflow web UI by opening your browser and navigating to `http://localhost:8080`
 
 <i>Note: If it's your first time running the airflow container you will have to set up the s3 connection variables. To do so:</i>
 

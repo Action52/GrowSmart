@@ -38,12 +38,14 @@ def review_new_docs_schema(ti):
         aws_secret_access_key=Variable.get("aws_secret_access_key"),
     )
     filenames = ti.xcom_pull(key="temporal_plant_traits_csv_filename")
-    expected_columns = ["TRY 30 AccSpecies ID", "Species name standardized against TPL", "Taxonomic level",
-                           "Status according to TPL", "Genus", "Family", "Phylogenetic Group within angiosperms",
-                           "Phylogenetic Group General", "Adaptation to terrestrial or aquatic habitats",
-                           "Woodiness", "Growth Form", "Succulence", "Nutrition type (parasitism)",
-                           "Nutrition type (carnivory)", "Leaf type", "Leaf area (mm2)", "Leaf area (n.o.)",
-                           "Plant height (m)", "Plant height (n.o.)"]
+    expected_columns = ["Species_id", "Species_name_standardized_against_TPL", "Taxonomic_level", "Status_according_to_TPL",
+                        "Genus", "Family", "Phylogenetic_Group_within_angiosperms", "Phylogenetic_Group_General",
+                        "Adaptation_to_terrestrial_or_aquatic_habitats", "Woodiness", "Growth_Form", "Succulence",
+                        "Nutrition_type_parasitism", "Nutrition_type_carnivory", "Leaf_type", "Leaf_area_mm2", "Leaf_area_n_o",
+                        "Nmass_mg_g", "Nmass_n_o", "LMA_g_m2", "LMA_n_o", "Plant_height_m", "Plant_height_n_o", "Diaspore_mass_mg",
+                        "Diaspore_mass_n_o", "SSD_observed_mg_mm3", "SSD_n_o", "LDMC_g_g", "LDMC_n_o", "SSD_imputed_mg_mm3",
+                        "SSD_combined_mg_mm3", "Number_of_traits_with_values"]
+    
     ti.xcom_push(key="expected_cols", value=expected_columns)
     s3 = session.client("s3")
     for i, filename in enumerate(filenames):
@@ -130,7 +132,6 @@ def delete_docs_from_landing(ti):
 
 
 default_args = {
-    "owner": "Luis Alfredo Leon",
     "depends_on_past": False,
     "start_date": datetime.datetime.now(),
     "retries": 1,
