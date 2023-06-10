@@ -148,3 +148,4 @@ zookeeper_data/
 cache
 /spark/jars/
 /spark/scripts/growsmart-proxy2.pem
+/airflow/jars/
