@@ -1505,18 +1505,6 @@ pandas = ">=1.5.0"
 lzo = ["python-lzo"]
 
 [[package]]
-name = "findspark"
-version = "2.0.1"
-description = "Find pyspark to make it importable."
-category = "main"
-optional = false
-python-versions = "*"
-files = [
-    {file = "findspark-2.0.1-py2.py3-none-any.whl", hash = "sha256:e5d5415ff8ced6b173b801e12fc90c1eefca1fb6bf9c19c4fc1f235d4222e753"},
-    {file = "findspark-2.0.1.tar.gz", hash = "sha256:aa10a96cb616cab329181d72e8ef13d2dc453b4babd02b5482471a0882c1195e"},
-]
-
-[[package]]
 name = "flask"
 version = "2.2.3"
 description = "A simple framework for building complex web applications."
@@ -2095,21 +2083,6 @@ pyrsistent = ">=0.14.0,<0.17.0 || >0.17.0,<0.17.1 || >0.17.1,<0.17.2 || >0.17.2"
 [package.extras]
 format = ["fqdn", "idna", "isoduration", "jsonpointer (>1.13)", "rfc3339-validator", "rfc3987", "uri-template", "webcolors (>=1.11)"]
 format-nongpl = ["fqdn", "idna", "isoduration", "jsonpointer (>1.13)", "rfc3339-validator", "rfc3986-validator (>0.1.0)", "uri-template", "webcolors (>=1.11)"]
-
-[[package]]
-name = "kafka-python"
-version = "2.0.2"
-description = "Pure Python client for Apache Kafka"
-category = "main"
-optional = false
-python-versions = "*"
-files = [
-    {file = "kafka-python-2.0.2.tar.gz", hash = "sha256:04dfe7fea2b63726cd6f3e79a2d86e709d608d74406638c5da33a01d45a9d7e3"},
-    {file = "kafka_python-2.0.2-py2.py3-none-any.whl", hash = "sha256:2d92418c7cb1c298fa6c7f0fb3519b520d0d7526ac6cb7ae2a4fc65a51a94b6e"},
-]
-
-[package.extras]
-crc32c = ["crc32c"]
 
 [[package]]
 name = "lazy-object-proxy"
@@ -3049,6 +3022,18 @@ cffi = ">=1.4.1"
 [package.extras]
 docs = ["sphinx (>=1.6.5)", "sphinx-rtd-theme"]
 tests = ["hypothesis (>=3.27.0)", "pytest (>=3.2.1,!=3.3.0)"]
+
+[[package]]
+name = "pyprobables"
+version = "0.5.8"
+description = "Probabilistic data structures in python"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "pyprobables-0.5.8-py3-none-any.whl", hash = "sha256:58afd620ee438d377eecc405f09cf0a455197606c73ee25df64a4d8ec41e6d58"},
+    {file = "pyprobables-0.5.8.tar.gz", hash = "sha256:6d545d748a290a7af595d1b11faf9bc9c7ed5265f3edd69b83a98040d022b911"},
+]
 
 [[package]]
 name = "pyrsistent"
@@ -4092,4 +4077,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "b847bb0ac6b3924e8deccdd3c65d586d05ed521d9b78580bf9e849917d06d5e9"
+content-hash = "aae6e078282bb6dbcae31a025ac074999970bb300441b4b809ee69a3510b22f3"

@@ -14,10 +14,10 @@ from airflow.models import Variable
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
-#set credentials to acces AWS s3 bucket. Credentials are taken from airflow variables
+# set credentials to acces AWS s3 bucket. Credentials are taken from airflow variables
 
-os.environ['AWS_ACCESS_KEY_ID'] = Variable.get("aws_access_key")
-os.environ['AWS_SECRET_ACCESS_KEY'] = Variable.get("aws_secret_access_key")
+os.environ["AWS_ACCESS_KEY_ID"] = Variable.get("aws_access_key")
+os.environ["AWS_SECRET_ACCESS_KEY"] = Variable.get("aws_secret_access_key")
 
 # Get the current date
 today = datetime.today().date()
@@ -25,79 +25,73 @@ today = datetime.today().date()
 # Create a new datetime object with today's date and a start time of midnight
 start_date = datetime.combine(today, datetime.min.time())
 
-#set the defauld args for the dag
+# set the defauld args for the dag
 default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': start_date,
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'catchup': False
+    "owner": "airflow",
+    "depends_on_past": False,
+    "start_date": start_date,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "catchup": False,
 }
 
-#create the dag
+# create the dag
 
-dag = DAG('AirflowAWSWeather_Persistent', default_args=default_args, schedule_interval='0 2 * * *')
+dag = DAG("AirflowAWSWeather_Persistent", default_args=default_args, schedule_interval="0 2 * * *")
 
-#create global variables for buckets
-s3 = boto3.client('s3')
-source_bucket = 'growsmarttemporallanding'
-destination_bucket = 'growsmartpersistentlanding'
+# create global variables for buckets
+s3 = boto3.client("s3")
+source_bucket = "growsmarttemporallanding"
+destination_bucket = "growsmartpersistentlanding"
+
 
 # Create a function to check the document presence in source S3 bucket
 def check_documents_existence():
     # Check if the file exists in the source S3 bucket
-    response = s3.list_objects(Bucket=source_bucket, Prefix='weather_data')
-    files = [content['Key'] for content in response.get('Contents', [])]
-    
+    response = s3.list_objects(Bucket=source_bucket, Prefix="weather_data")
+    files = [content["Key"] for content in response.get("Contents", [])]
+
     # If the file exists in the bucket, trigger the extract_and_transform task
     if files:
-        return 'extract_and_transform'
+        return "extract_and_transform"
     else:
-        return 'stop'
+        return "stop"
+
 
 # Create the function for extract and transform data
 def extract_and_transform():
-        s3 = boto3.client('s3')
-        # Get weather_data.csv from the source S3 bucket
-        response = s3.get_object(Bucket=source_bucket, Key='weather_data.csv')
-        content = response['Body'].read().decode('utf-8')
+    s3 = boto3.client("s3")
+    # Get weather_data.csv from the source S3 bucket
+    response = s3.get_object(Bucket=source_bucket, Key="weather_data.csv")
+    content = response["Body"].read().decode("utf-8")
 
-        # Parse the CSV content into a Pandas DataFrame
-        df = pd.read_csv(StringIO(content))
+    # Parse the CSV content into a Pandas DataFrame
+    df = pd.read_csv(StringIO(content))
 
-        # Convert the DataFrame to a PyArrow Table
-        table = pa.Table.from_pandas(df)
+    # Convert the DataFrame to a PyArrow Table
+    table = pa.Table.from_pandas(df)
 
-        partition_col = 'pr_date'
+    partition_col = "pr_date"
 
-        current_date = datetime.today().strftime('%Y-%m-%d')
+    current_date = datetime.today().strftime("%Y-%m-%d")
 
-        # Convert the Arrow Table to a partitioned Parquet file
-        pq.write_to_dataset(
-            table=table,
-            root_path=f"s3://{destination_bucket}/weather_data/{current_date}",
-            partition_cols=[partition_col],
-            compression='snappy'
-        )
+    # Convert the Arrow Table to a partitioned Parquet file
+    pq.write_to_dataset(
+        table=table,
+        root_path=f"s3://{destination_bucket}/weather_data/{current_date}",
+        partition_cols=[partition_col],
+        compression="snappy",
+    )
 
-        return 'transform_complete'
-
-#Define the checking task
-t1 = PythonOperator(
-    task_id='check_documents_existence',
-    python_callable=check_documents_existence,
-    dag=dag)
+    return "transform_complete"
 
 
-#Define the extract and merge task in the DAG
-t2 = PythonOperator(
-    task_id='extract_and_transform',
-    python_callable=extract_and_transform,
-    dag=dag)
+# Define the checking task
+t1 = PythonOperator(task_id="check_documents_existence", python_callable=check_documents_existence, dag=dag)
+
+
+# Define the extract and merge task in the DAG
+t2 = PythonOperator(task_id="extract_and_transform", python_callable=extract_and_transform, dag=dag)
 
 t1 >> t2
-
-
-
